@@ -3,8 +3,16 @@ package path
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/go-logr/logr"
 )
+
+func NewExtendedAttributeRecord(logger logr.Logger) *ExtendedAttributeRecord {
+	return &ExtendedAttributeRecord{
+		logger: logger,
+	}
+}
 
 type ExtendedAttributeRecord struct {
 	OwnerIdentifier                uint16
@@ -25,46 +33,74 @@ type ExtendedAttributeRecord struct {
 	LengthOfApplicationUse         uint32
 	ApplicationUse                 []byte
 	EscapeSequences                []byte
+	logger                         logr.Logger
 }
 
+// Unmarshal parses the given data into the ExtendedAttributeRecord struct
 func (ear *ExtendedAttributeRecord) Unmarshal(data []byte) error {
 	if len(data) < 256 {
 		return errors.New("invalid data length")
 	}
 
+	// Parse fields
 	ear.OwnerIdentifier = binary.LittleEndian.Uint16(data[0:4])
-	logging.Logger().Tracef("Owner identifier: %d", ear.OwnerIdentifier)
 	ear.GroupIdentifier = binary.LittleEndian.Uint16(data[4:8])
-	logging.Logger().Tracef("Group identifier: %d", ear.GroupIdentifier)
 	ear.Permissions = binary.LittleEndian.Uint16(data[8:10])
-	logging.Logger().Tracef("Permissions: %d", ear.Permissions)
+
 	copy(ear.FileCreationDate[:], data[10:27])
-	logging.Logger().Tracef("File creation date: %s", ear.FileCreationDate)
 	copy(ear.FileModificationDate[:], data[27:44])
-	logging.Logger().Tracef("File modification date: %s", ear.FileModificationDate)
 	copy(ear.FileExpirationDate[:], data[44:61])
-	logging.Logger().Tracef("File expiration date: %s", ear.FileExpirationDate)
 	copy(ear.FileEffectiveDate[:], data[61:78])
-	logging.Logger().Tracef("File effective date: %s", ear.FileEffectiveDate)
+
 	ear.RecordFormat = data[78]
-	logging.Logger().Tracef("Record format: %d", ear.RecordFormat)
 	ear.RecordAttributes = data[79]
-	logging.Logger().Tracef("Record attributes: %d", ear.RecordAttributes)
 	ear.RecordLength = binary.LittleEndian.Uint32(data[80:84])
-	logging.Logger().Tracef("Record length: %d", ear.RecordLength)
+
 	copy(ear.SystemUseIdentifier[:], data[84:116])
-	logging.Logger().Tracef("System use identifier: %s", ear.SystemUseIdentifier)
 	copy(ear.SystemUse[:], data[116:180])
-	logging.Logger().Tracef("System use: %s", ear.SystemUse)
+
 	ear.ExtendedAttributeRecordVersion = data[180]
-	logging.Logger().Tracef("Extended attribute record version: %d", ear.ExtendedAttributeRecordVersion)
 	ear.LengthOfEscapeSequences = data[181]
-	logging.Logger().Tracef("Length of escape sequences: %d", ear.LengthOfEscapeSequences)
+
 	copy(ear.Unused1[:], data[182:246])
+
 	ear.LengthOfApplicationUse = binary.LittleEndian.Uint32(data[246:250])
-	logging.Logger().Tracef("Length of application use: %d", ear.LengthOfApplicationUse)
-	ear.ApplicationUse = data[250 : 250+ear.LengthOfApplicationUse]
-	ear.EscapeSequences = data[250+ear.LengthOfApplicationUse : 250+ear.LengthOfApplicationUse+uint32(ear.LengthOfEscapeSequences)]
+
+	// Make sure slices won't go out of range
+	appUseEnd := 250 + ear.LengthOfApplicationUse
+	if appUseEnd > uint32(len(data)) {
+		return fmt.Errorf("applicationUse slice out of range: end=%d, len(data)=%d", appUseEnd, len(data))
+	}
+	// Copy into a new slice, avoiding reference to the original 'data'
+	ear.ApplicationUse = append([]byte(nil), data[250:appUseEnd]...)
+
+	escSeqEnd := appUseEnd + uint32(ear.LengthOfEscapeSequences)
+	if escSeqEnd > uint32(len(data)) {
+		return fmt.Errorf("escapeSequences slice out of range: end=%d, len(data)=%d", escSeqEnd, len(data))
+	}
+	// Copy into a new slice, too
+	ear.EscapeSequences = append([]byte(nil), data[appUseEnd:escSeqEnd]...)
+
+	// Single grouped logging call
+	ear.logger.V(logging.TRACE).Info("Extended Attribute Record fields",
+		"ownerIdentifier", ear.OwnerIdentifier,
+		"groupIdentifier", ear.GroupIdentifier,
+		"permissions", ear.Permissions,
+		"fileCreationDate", string(ear.FileCreationDate[:]),
+		"fileModificationDate", string(ear.FileModificationDate[:]),
+		"fileExpirationDate", string(ear.FileExpirationDate[:]),
+		"fileEffectiveDate", string(ear.FileEffectiveDate[:]),
+		"recordFormat", ear.RecordFormat,
+		"recordAttributes", ear.RecordAttributes,
+		"recordLength", ear.RecordLength,
+		"systemUseIdentifier", string(ear.SystemUseIdentifier[:]),
+		"systemUse", string(ear.SystemUse[:]),
+		"extendedAttributeRecordVersion", ear.ExtendedAttributeRecordVersion,
+		"lengthOfEscapeSequences", ear.LengthOfEscapeSequences,
+		"lengthOfApplicationUse", ear.LengthOfApplicationUse,
+		"applicationUse", string(ear.ApplicationUse),
+		"escapeSequences", string(ear.EscapeSequences),
+	)
 
 	return nil
 }

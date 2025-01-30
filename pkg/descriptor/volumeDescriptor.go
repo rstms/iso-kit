@@ -5,6 +5,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/path"
+	"github.com/go-logr/logr"
 )
 
 // VolumeDescriptorType represents the type of volume descriptor in the ISO 9660 standard.
@@ -27,14 +28,16 @@ const (
 	VolumeDescriptorSetTerminator VolumeDescriptorType = 0xFF
 )
 
-func ParseVolumeDescriptor(data []byte) (VolumeDescriptor, error) {
-	logging.Logger().Trace("Parsing volume descriptor")
-	vd := &volumeDescriptor{}
+func ParseVolumeDescriptor(data []byte, logger logr.Logger) (VolumeDescriptor, error) {
+	logger.V(logging.TRACE).Info("Parsing volume descriptor")
+	vd := &volumeDescriptor{
+		logger: logger,
+	}
 	if err := vd.Unmarshal(data); err != nil {
-		logging.Logger().Errorf("Failed to unmarshal volume descriptor: %v", err)
+		logger.Error(err, "Failed to unmarshal volume descriptor")
 		return nil, err
 	}
-	logging.Logger().Trace("Successfully parsed volume descriptor")
+	logger.V(logging.TRACE).Info("Successfully parsed volume descriptor")
 	return vd, nil
 }
 
@@ -53,6 +56,7 @@ type volumeDescriptor struct {
 	identifier string
 	version    int8
 	data       [consts.ISO9660_SECTOR_SIZE]byte
+	logger     logr.Logger
 }
 
 func (vd *volumeDescriptor) Type() VolumeDescriptorType {

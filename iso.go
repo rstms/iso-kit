@@ -236,7 +236,7 @@ func (i *ISO9660Image) Parse() (err error) {
 		}
 
 		// Parse the volume descriptor
-		vd, err := ParseVolumeDescriptor(vdBytes)
+		vd, err := ParseVolumeDescriptor(vdBytes, i.logger)
 		if err != nil {
 			return fmt.Errorf("failed to parse volume descriptor at offset %d: %w", idx, err)
 		}
@@ -249,7 +249,7 @@ func (i *ISO9660Image) Parse() (err error) {
 				return fmt.Errorf("failed to parse primary volume descriptor: %w", err)
 			}
 
-			err = parsePathTable(i.isoFile, pvd)
+			err = parsePathTable(i.isoFile, pvd, i.logger)
 			if err != nil {
 				return fmt.Errorf("failed to parse path table: %w", err)
 			}
@@ -475,7 +475,7 @@ func isElTorito(bootSystemIdentifier string) bool {
 }
 
 // parsePathTable is a utility function to parse the path table
-func parsePathTable(isoReader io.ReaderAt, vd VolumeDescriptor) error {
+func parsePathTable(isoReader io.ReaderAt, vd VolumeDescriptor, logger logr.Logger) error {
 	// Walk the path table
 
 	start := int(vd.PathTableLocation() * consts.ISO9660_SECTOR_SIZE)
@@ -520,13 +520,13 @@ func parsePathTable(isoReader io.ReaderAt, vd VolumeDescriptor) error {
 		}
 
 		// Unmarshal the record (assumes your Unmarshal can parse exactly one record)
-		record := PathTableRecord{}
+		record := NewPathTableRecord(logger)
 		if err := record.Unmarshal(buf); err != nil {
 			return fmt.Errorf("failed to unmarshal path table record at offset %d: %w", offset, err)
 		}
 
 		// Append to your slice of records
-		*pathTable = append(*pathTable, &record)
+		*pathTable = append(*pathTable, record)
 
 		// Advance offset by the size of this record
 		offset += recordLen

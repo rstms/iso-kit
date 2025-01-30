@@ -1,8 +1,8 @@
 package rockridge
 
 import (
+	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/encoding"
-	"github.com/bgrewell/iso-kit/pkg/logging"
 	"io/fs"
 	"os"
 )
@@ -93,37 +93,33 @@ type RockRidgePosixEntry struct {
 //	Offset 20-27: POSIX File User ID - 64-bit number. The value of this field shall be the POSIX file user ID.
 //	Offset 28-35: POSIX File Group ID - 64-bit number. The value of this field shall be the POSIX file group ID.
 //	Offset 36-43: POSIX File Serial Number - 64-bit number. The value of this field shall be the POSIX file serial number.
-func UnmarshalRockRidgePosixEntry(data []byte) *RockRidgePosixEntry {
+func UnmarshalRockRidgePosixEntry(data []byte) (entry *RockRidgePosixEntry, err error) {
 	// IMPORTANT: data input begins at offset 4 of the System Use Entry record
 	modeVal, err := encoding.UnmarshalUint32LSBMSB(data[0:8])
 	if err != nil {
-		logging.Logger().Tracef("Error unmarshalling POSIX file mode: %s", err)
-		return nil
+		return nil, fmt.Errorf("Error unmarshalling POSIX file mode: %s", err)
 	}
 
 	mode := parseFileMode(modeVal)
 
 	links, err := encoding.UnmarshalUint32LSBMSB(data[8:16])
 	if err != nil {
-		logging.Logger().Tracef("Error unmarshalling POSIX file links: %s", err)
-		return nil
+		return nil, fmt.Errorf("Error unmarshalling POSIX file links: %s", err)
 	}
 
 	userId, err := encoding.UnmarshalUint32LSBMSB(data[16:24])
 	if err != nil {
-		logging.Logger().Tracef("Error unmarshalling POSIX file user ID: %s", err)
-		return nil
+		return nil, fmt.Errorf("Error unmarshalling POSIX file user ID: %s", err)
 	}
 
 	groupId, err := encoding.UnmarshalUint32LSBMSB(data[24:32])
 	if err != nil {
-		logging.Logger().Tracef("Error unmarshalling POSIX file group ID: %s", err)
-		return nil
+		return nil, fmt.Errorf("Error unmarshalling POSIX file group ID: %s", err)
 	}
 
 	serialNo, err := encoding.UnmarshalUint32LSBMSB(data[32:40])
 	if err != nil {
-		logging.Logger().Tracef("Error unmarshalling POSIX file serial number: %s", err)
+		return nil, fmt.Errorf("Error unmarshalling POSIX file serial number: %s", err)
 	}
 	return &RockRidgePosixEntry{
 		Mode:     mode,
@@ -131,7 +127,7 @@ func UnmarshalRockRidgePosixEntry(data []byte) *RockRidgePosixEntry {
 		UserId:   userId,
 		GroupId:  groupId,
 		SerialNo: serialNo,
-	}
+	}, nil
 }
 
 // parseFileMode converts a 32-bit unsigned integer into an fs.FileMode struct

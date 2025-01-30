@@ -34,7 +34,7 @@ type DirectoryRecord struct {
 	FileIdentifier          string
 	PaddingField            []byte
 	SystemUse               []byte
-	SystemUseEntries        susp.SystemUseEntries
+	SystemUseEntries        *susp.SystemUseEntries
 	ExtensionRecords        []*susp.ExtensionRecord
 	Joliet                  bool
 	hasRockRidge            bool
@@ -148,7 +148,7 @@ func (dr *DirectoryRecord) Unmarshal(data []byte, isoFile io.ReaderAt) error {
 		dr.logger.V(logging.TRACE).Info("System use data",
 			"hex", fmt.Sprintf("%x", dr.SystemUse), "length", len(dr.SystemUse))
 
-		entries, err := susp.GetSystemUseEntries(dr.SystemUse, isoFile)
+		entries, err := susp.GetSystemUseEntries(dr.SystemUse, isoFile, dr.logger)
 		if err != nil {
 			return err
 		}
