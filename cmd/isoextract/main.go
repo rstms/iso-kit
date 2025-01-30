@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit"
 	"github.com/bgrewell/iso-kit/pkg/logging"
-	"github.com/go-logr/zerologr"
-	"github.com/rs/zerolog"
 	"os"
 )
 
@@ -28,23 +26,13 @@ func main() {
 	// Parse flags
 	flag.Parse()
 
-	// Configure logging
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
-
-	zerologr.NameFieldName = "logger"
-	zerologr.NameSeparator = "/"
-
+	level := logging.INFO
 	if *trace {
-		zerologr.SetMaxV(logging.TRACE)
+		level = logging.TRACE
 	} else if *debug {
-		zerologr.SetMaxV(logging.DEBUG)
-	} else {
-		zerologr.SetMaxV(logging.INFO)
+		level = logging.DEBUG
 	}
-
-	zl := zerolog.New(os.Stderr)
-	zl = zl.With().Caller().Timestamp().Logger()
-	log := zerologr.New(&zl)
+	log := logging.NewSimpleLogger(os.Stderr, level, true)
 
 	// Ensure we have an ISO path
 	if flag.NArg() < 1 {

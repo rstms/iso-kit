@@ -26,6 +26,15 @@ const (
 	ISO9660 ISOType = iota
 )
 
+// ProgressCallback defines the signature for progress update functions.
+type ProgressCallback func(
+	currentFilename string,
+	bytesTransferred int64,
+	totalBytes int64,
+	currentFileNumber int,
+	totalFileCount int,
+)
+
 // Options represents the options for opening an ISO image
 type Options struct {
 	isoType          ISOType
@@ -36,10 +45,24 @@ type Options struct {
 	bootFileLocation string
 	preferEnhancedVD bool
 	logger           logr.Logger
+	progressCallback ProgressCallback
 }
 
 // Option represents a function that modifies the Options
 type Option func(*Options)
+
+// WithProgress sets a progress callback function that will be called with progress updates.
+// Parameters:
+// - currentFilename: The name of the file currently being processed.
+// - bytesTransferred: The number of bytes transferred so far for the current file.
+// - totalBytes: The total number of bytes to be transferred for the current file.
+// - currentFileNumber: The index of the current file being processed.
+// - totalFileCount: The total number of files to be processed.
+func WithProgress(callback ProgressCallback) Option {
+	return func(o *Options) {
+		o.progressCallback = callback
+	}
+}
 
 // WithIsoType sets the ISO type for the image. Currently only ISO9660 is supported.
 func WithIsoType(isoType ISOType) Option {
