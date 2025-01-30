@@ -177,7 +177,8 @@ func (d *DirectoryEntry) PopulateChildren(visited map[uint32]bool, parentPath st
 			d.logger.V(logging.TRACE).Info("Processing directory entry", "offset", entryOffset, "length", entryLength)
 
 			// Unmarshal directory record
-			record := &DirectoryRecord{Joliet: d.Record.Joliet}
+			record := NewRecord(d.logger)
+			record.Joliet = d.Record.Joliet
 			if err := record.Unmarshal(buffer[entryOffset:entryOffset+entryLength], d.IsoReader); err != nil {
 				return fmt.Errorf("failed to parse directory record: %w", err)
 			}

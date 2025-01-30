@@ -206,9 +206,8 @@ func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_
 		svd.isJoliet = true
 	}
 
-	rootRecord := DirectoryRecord{
-		Joliet: svd.isJoliet,
-	}
+	rootRecord := NewRecord(svd.logger)
+	rootRecord.Joliet = svd.isJoliet
 	err = rootRecord.Unmarshal(data[156:190], isoFile)
 	if err != nil {
 		return err
@@ -245,10 +244,7 @@ func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_
 	svd.LOptionalPathTableLocation = binary.LittleEndian.Uint32(data[144:148])
 	svd.MPathTableLocation = binary.BigEndian.Uint32(data[148:152])
 	svd.MOptionalPathTableLocation = binary.BigEndian.Uint32(data[152:156])
-	svd.RootDirectoryEntry = &DirectoryEntry{
-		Record:    &rootRecord,
-		IsoReader: isoFile,
-	}
+	svd.RootDirectoryEntry = NewEntry(rootRecord, isoFile, svd.logger)
 	svd.VolumeSetIdentifier = string(data[190:318])
 	svd.PublisherIdentifier = string(data[318:446])
 	svd.DataPreparerIdentifier = string(data[446:574])

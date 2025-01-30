@@ -171,7 +171,7 @@ func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]b
 	// Save the raw data
 	pvd.rawData = data
 
-	rootRecord := DirectoryRecord{}
+	rootRecord := NewRecord(pvd.logger)
 	err = rootRecord.Unmarshal(data[156:190], isoFile)
 	if err != nil {
 		return err
@@ -209,10 +209,7 @@ func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]b
 	pvd.LOptionalPathTableLocation = binary.LittleEndian.Uint32(data[144:148])
 	pvd.MPathTableLocation = binary.BigEndian.Uint32(data[148:152])
 	pvd.MOptionalPathTableLocation = binary.BigEndian.Uint32(data[152:156])
-	pvd.RootDirectoryEntry = &DirectoryEntry{
-		Record:    &rootRecord,
-		IsoReader: isoFile,
-	}
+	pvd.RootDirectoryEntry = NewEntry(rootRecord, isoFile, pvd.logger)
 	pvd.VolumeSetIdentifier = string(data[190:318])
 	pvd.PublisherIdentifier = string(data[318:446])
 	pvd.DataPreparerIdentifier = string(data[446:574])
