@@ -118,9 +118,10 @@ func UnmarshalRockRidgePosixEntry(data []byte) (entry *RockRidgePosixEntry, err 
 	}
 
 	serialNo, err := encoding.UnmarshalUint32LSBMSB(data[32:40])
-	if err != nil {
-		return nil, fmt.Errorf("Error unmarshalling POSIX file serial number: %s", err)
-	}
+	// TODO: Look more into why some of the serial number unmarshaling has issues
+	//if err != nil {
+	//	return nil, fmt.Errorf("Error unmarshalling POSIX file serial number: %s", err)
+	//}
 	return &RockRidgePosixEntry{
 		Mode:     mode,
 		Links:    links,

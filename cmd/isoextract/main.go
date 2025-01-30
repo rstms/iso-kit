@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit"
 	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/go-logr/zerologr"
+	"github.com/rs/zerolog"
 	"os"
 )
 
@@ -27,13 +29,22 @@ func main() {
 	flag.Parse()
 
 	// Configure logging
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
+
+	zerologr.NameFieldName = "logger"
+	zerologr.NameSeparator = "/"
+
 	if *trace {
-		level := "trace"
-		logging.InitLogger(&level)
+		zerologr.SetMaxV(logging.TRACE)
 	} else if *debug {
-		level := "debug"
-		logging.InitLogger(&level)
+		zerologr.SetMaxV(logging.DEBUG)
+	} else {
+		zerologr.SetMaxV(logging.INFO)
 	}
+
+	zl := zerolog.New(os.Stderr)
+	zl = zl.With().Caller().Timestamp().Logger()
+	log := zerologr.New(&zl)
 
 	// Ensure we have an ISO path
 	if flag.NArg() < 1 {
@@ -61,6 +72,7 @@ func main() {
 		iso.WithBootFileLocation(*bootDir),
 		iso.WithPreferEnhancedVD(*enhancedVol),
 		iso.WithStripVersionInfo(*stripVer),
+		iso.WithLogger(log),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open ISO: %v\n", err)

@@ -162,11 +162,13 @@ func (dr *DirectoryRecord) Unmarshal(data []byte, isoFile io.ReaderAt) error {
 
 		dr.hasRockRidge = dr.SystemUseEntries.HasRockRidge()
 		if dr.hasRockRidge {
-			dr.rockRidgeName = dr.SystemUseEntries.RockRidgeName()
-			if dr.rockRidgeName == nil {
-				dr.logger.Error(nil, "Rock Ridge name is nil")
-			} else {
-				dr.logger.V(logging.TRACE).Info("Rock Ridge name", "name", *dr.rockRidgeName)
+			if dr.FileIdentifier != "\u0000" && dr.FileIdentifier != "\u0001" {
+				dr.rockRidgeName = dr.SystemUseEntries.RockRidgeName()
+				if dr.rockRidgeName == nil {
+					dr.logger.Error(nil, "WARNING: Rock Ridge name is nil", "identifier", dr.FileIdentifier)
+				} else {
+					dr.logger.V(logging.TRACE).Info("Rock Ridge name", "name", *dr.rockRidgeName)
+				}
 			}
 
 			dr.rockRidgePermissions = dr.SystemUseEntries.RockRidgePermissions()

@@ -366,7 +366,7 @@ func (i *ISO9660Image) Extract(outputLocation string, includeBootImages bool) (e
 // ExtractFiles extracts all files from the ISO 9660 image
 func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 	// Ensure the ISO 9660 image has been parsed
-	i.logger.V(logging.INFO).Info("Extracting files from ISO 9660 image", "outputLocation", outputLocation)
+	i.logger.V(logging.DEBUG).Info("Extracting files from ISO 9660 image", "outputLocation", outputLocation)
 	if !i.Parsed() {
 		if err := i.Parse(); err != nil {
 			return fmt.Errorf("failed to parse ISO: %w", err)
@@ -405,7 +405,7 @@ func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 // ExtractBootImages extracts all boot images from the ISO 9660 image
 func (i *ISO9660Image) ExtractBootImages(outputLocation string) (err error) {
 	// Ensure the output directory exists
-	i.logger.V(logging.INFO).Info("Extracting boot images from ISO 9660 image", "outputLocation", outputLocation)
+	i.logger.V(logging.DEBUG).Info("Extracting boot images from ISO 9660 image", "outputLocation", outputLocation)
 	var stat os.FileInfo
 	if stat, err = os.Stat(outputLocation); err != nil && os.IsNotExist(err) {
 		if stat != nil && !stat.IsDir() {
