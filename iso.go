@@ -386,7 +386,7 @@ func (i *ISO9660Image) Extract(outputLocation string, includeBootImages bool) (e
 	return nil
 }
 
-// ExtractFiles extracts all files from the ISO 9660 image
+// ExtractFiles extracts all files from the ISO 9660 image with progress updates.
 func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 	// Ensure the ISO 9660 image has been parsed
 	i.logger.V(logging.DEBUG).Info("Extracting files from ISO 9660 image", "outputLocation", outputLocation)
@@ -402,9 +402,18 @@ func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 		return fmt.Errorf("failed to get all entries: %w", err)
 	}
 
+	// Filter out all file entries and count them
+	var fileEntries []*directory.DirectoryEntry
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			fileEntries = append(fileEntries, entry)
+		}
+	}
+	totalFileCount := len(fileEntries)
+	currentFileNumber := 0
+
 	// Handle creating all directories first
 	for _, entry := range entries {
-
 		if entry.IsDir() {
 			fullPath := filepath.Join(outputLocation, entry.FullPath())
 			if err := os.MkdirAll(fullPath, os.ModePerm); err != nil {
@@ -413,12 +422,20 @@ func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 		}
 	}
 
-	// Handle extracting all files
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			if err := i.extractFile(entry, filepath.Join(outputLocation, entry.FullPath())); err != nil {
-				return fmt.Errorf("failed to extract file %s: %w", entry.FullPath(), err)
-			}
+	// Handle extracting all files with progress updates
+	for _, entry := range fileEntries {
+		currentFileNumber++
+
+		fullPath := filepath.Join(outputLocation, entry.FullPath())
+
+		// Strip versioning information if requested
+		if i.options.stripVersionInfo {
+			fullPath = stripVersion(fullPath)
+		}
+
+		// Extract the file with progress updates
+		if err := i.extractFileWithProgress(entry, fullPath, currentFileNumber, totalFileCount); err != nil {
+			return fmt.Errorf("failed to extract file %s: %w", entry.FullPath(), err)
 		}
 	}
 
@@ -452,6 +469,64 @@ func (i *ISO9660Image) GetAllEntries() ([]*directory.DirectoryEntry, error) {
 
 	// Start extracting from the root directory
 	return walkAllEntries(i.RootDirectory())
+}
+
+// extractFileWithProgress is a utility function to extract the contents of a file with progress updates
+func (i *ISO9660Image) extractFileWithProgress(file *directory.DirectoryEntry, fullPath string, currentFileNumber int, totalFileCount int) error {
+	// Open or create the output file
+	outFile, err := os.Create(fullPath)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %w", fullPath, err)
+	}
+	defer outFile.Close()
+
+	// Calculate the byte offset and size
+	start := int64(file.Record.LocationOfExtent) * consts.ISO9660_SECTOR_SIZE // Replace logicalBlockSize as needed
+	size := int64(file.Record.DataLength)
+	bufferSize := 4096 // 4KB buffer
+	buffer := make([]byte, bufferSize)
+
+	bytesTransferred := int64(0)
+
+	for bytesTransferred < size {
+		// Determine the number of bytes to read in this iteration
+		bytesToRead := bufferSize
+		remaining := size - bytesTransferred
+		if remaining < int64(bufferSize) {
+			bytesToRead = int(remaining)
+		}
+
+		// Read bytes from the ISO
+		n, err := file.IsoReader.ReadAt(buffer[:bytesToRead], start+bytesTransferred)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("failed to read file %s from ISO: %w", fullPath, err)
+		}
+
+		if n == 0 {
+			break // Reached EOF
+		}
+
+		// Write bytes to the output file
+		if _, err := outFile.Write(buffer[:n]); err != nil {
+			return fmt.Errorf("failed to write to file %s: %w", fullPath, err)
+		}
+
+		// Update bytes transferred
+		bytesTransferred += int64(n)
+
+		// Invoke the progress callback if it's set
+		if i.options.progressCallback != nil {
+			i.options.progressCallback(
+				file.FullPath(),   // currentFilename
+				bytesTransferred,  // bytesTransferred
+				size,              // totalBytes
+				currentFileNumber, // currentFileNumber
+				totalFileCount,    // totalFileCount
+			)
+		}
+	}
+
+	return nil
 }
 
 // extractFile is a utility function to extract the contents of a file

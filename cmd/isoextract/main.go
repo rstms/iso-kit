@@ -6,7 +6,90 @@ import (
 	"github.com/bgrewell/iso-kit"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"os"
+	"time"
+
+	"github.com/theckman/yacspin"
+	"golang.org/x/term"
 )
+
+// truncateString truncates the input string to the specified max length.
+// If truncation occurs, it prepends "..." to indicate the string has been shortened.
+func truncateString(input string, maxLength int) string {
+	if len(input) <= maxLength {
+		return input
+	}
+	if maxLength <= 3 {
+		return input[len(input)-maxLength:]
+	}
+	return "..." + input[len(input)-(maxLength-3):]
+}
+
+// CreateProgressCallback returns a ProgressCallback that updates the spinner's message.
+func CreateProgressCallback(spinner *yacspin.Spinner) iso.ProgressCallback {
+	return func(
+		currentFilename string,
+		bytesTransferred int64,
+		totalBytes int64,
+		currentFileNumber int,
+		totalFileCount int,
+	) {
+		// Fetch terminal width
+		width, _, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil {
+			width = 80 // Default width
+		}
+
+		// Define fixed parts of the message
+		fixedPart := fmt.Sprintf(" [%d/%d] ", currentFileNumber, totalFileCount)
+		suffixPart := fmt.Sprintf(" - %.2f%%", float64(bytesTransferred)/float64(totalBytes)*100)
+
+		// Calculate available space for the filename
+		availableSpace := width - len(fixedPart) - len(suffixPart) - 6
+		if availableSpace < 10 { // Minimum space to display meaningful filename
+			availableSpace = 10
+		}
+
+		// Truncate the filename if necessary
+		adjustedFilename := truncateString(currentFilename, availableSpace)
+
+		percent := float64(bytesTransferred) / float64(totalBytes) * 100
+		message := fmt.Sprintf(" [%d/%d] %s - %.2f%%",
+			currentFileNumber, totalFileCount, adjustedFilename, percent)
+
+		// Update spinner's suffix (message)
+		spinner.Message(message)
+	}
+}
+
+// InitializeSpinner sets up and starts the yacspin spinner.
+func InitializeSpinner(outputdir string) (*yacspin.Spinner, error) {
+	// Define spinner options
+	settings := yacspin.Config{
+		Frequency:         100 * time.Millisecond,
+		ShowCursor:        false,
+		SpinnerAtEnd:      false,
+		CharSet:           yacspin.CharSets[14],
+		Colors:            []string{"fgHiCyan"},
+		StopColors:        []string{"fgHiGreen"},
+		StopFailColors:    []string{"fgHiRed"},
+		StopFailCharacter: "✗",
+		StopCharacter:     "✓",
+		StopMessage:       fmt.Sprintf(" All files extracted successfully to %s!", outputdir),
+	}
+
+	// Create a new spinner
+	spinner, err := yacspin.New(settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create spinner: %w", err)
+	}
+
+	// Start the spinner
+	if err := spinner.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start spinner: %w", err)
+	}
+
+	return spinner, nil
+}
 
 func main() {
 	// Logging level flags
@@ -26,6 +109,17 @@ func main() {
 	// Parse flags
 	flag.Parse()
 
+	// Setup callback for progress updates
+	spinner, err := InitializeSpinner(*outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize spinner: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Progress updates will be disabled.\n")
+	}
+
+	// Create progress callback
+	progressCallback := CreateProgressCallback(spinner)
+
+	// Setup logging
 	level := logging.INFO
 	if *trace {
 		level = logging.TRACE
@@ -60,6 +154,7 @@ func main() {
 		iso.WithBootFileLocation(*bootDir),
 		iso.WithPreferEnhancedVD(*enhancedVol),
 		iso.WithStripVersionInfo(*stripVer),
+		iso.WithProgress(progressCallback),
 		iso.WithLogger(log),
 	)
 	if err != nil {
@@ -69,11 +164,22 @@ func main() {
 	defer img.Close()
 
 	// Extract the contents
-	err = img.Extract(*outputDir, *bootImages)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to extract image: %v\n", err)
-		os.Exit(1)
+	running := true
+	go func() {
+		err = img.Extract(*outputDir, *bootImages)
+		if err != nil {
+			spinner.StopFailMessage(fmt.Sprintf("Failed to extract image: %v", err))
+			spinner.StopFail()
+			os.Exit(1)
+		}
+		running = false
+		spinner.Stop()
+	}()
+
+	// Wait for extraction to complete
+	for running {
+		time.Sleep(10 * time.Millisecond)
 	}
 
-	fmt.Printf("Extraction completed successfully to '%s'.\n", *outputDir)
+	//fmt.Printf("Extraction completed successfully to '%s'.\n", *outputDir)
 }
