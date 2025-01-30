@@ -1,38 +1,47 @@
 package descriptor
 
 import (
-	"errors"
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/go-logr/logr"
 	"strings"
 )
 
-func ParseBootRecordVolumeDescriptor(vd VolumeDescriptor) (*BootRecordVolumeDescriptor, error) {
-	logging.Logger().Trace("Parsing boot record volume descriptor")
+func ParseBootRecordVolumeDescriptor(vd VolumeDescriptor, logger logr.Logger) (*BootRecordVolumeDescriptor, error) {
+	logger.V(logging.TRACE).Info("Parsing boot record volume descriptor")
+
 	brvd := &BootRecordVolumeDescriptor{}
 	if err := brvd.Unmarshal(vd.Data()); err != nil {
-		logging.Logger().Error(err, "Failed to unmarshal boot record volume descriptor")
+		logger.Error(err, "Failed to unmarshal boot record volume descriptor")
 		return nil, err
 	}
-	logging.Logger().Trace("Successfully parsed boot record volume descriptor")
+	logger.V(logging.TRACE).Info("Successfully parsed boot record volume descriptor")
 
-	logging.Logger().Tracef("Volume descriptor type: %d", brvd.Type)
+	// Check type
+	logger.V(logging.TRACE).Info("Volume descriptor type", "type", brvd.Type)
 	if brvd.Type != VolumeDescriptorBootRecord {
-		logging.Logger().Warnf("Invalid boot record volume descriptor: %d", brvd.Type)
+		logger.Error(nil, "WARNING: Invalid boot record volume descriptor", "actualType", brvd.Type,
+			"expectedType", VolumeDescriptorBootRecord)
 	}
 
-	logging.Logger().Tracef("Standard identifier: %s", brvd.StandardIdentifier)
+	// Check standard identifier
+	logger.V(logging.TRACE).Info("Standard identifier", "identifier", brvd.StandardIdentifier)
 	if brvd.StandardIdentifier != consts.ISO9660_STD_IDENTIFIER {
-		logging.Logger().Warnf("Invalid standard identifier: %s, expected: %s", brvd.StandardIdentifier, consts.ISO9660_STD_IDENTIFIER)
+		logger.Error(nil, "WARNING: Invalid standard identifier",
+			"actualIdentifier", brvd.StandardIdentifier,
+			"expectedIdentifier", consts.ISO9660_STD_IDENTIFIER)
 	}
 
-	logging.Logger().Tracef("Volume descriptor version: %d", brvd.VolumeDescriptorVersion)
+	// Check volume descriptor version
+	logger.V(logging.TRACE).Info("Volume descriptor version", "version", brvd.VolumeDescriptorVersion)
 	if brvd.VolumeDescriptorVersion != consts.ISO9660_VOLUME_DESC_VERSION {
-		logging.Logger().Warnf("Invalid volume descriptor version: %d, expected: %d", brvd.VolumeDescriptorVersion, consts.ISO9660_VOLUME_DESC_VERSION)
+		logger.Error(nil, "WARNING: Invalid volume descriptor version",
+			"actualVersion", brvd.VolumeDescriptorVersion,
+			"expectedVersion", consts.ISO9660_VOLUME_DESC_VERSION)
 	}
 
-	logging.Logger().Tracef("Boot system identifier: %s", brvd.BootSystemIdentifier)
-	logging.Logger().Tracef("Boot identifier: %s", brvd.BootIdentifier)
+	logger.V(logging.TRACE).Info("Boot system identifier", "bootSystemIdentifier", brvd.BootSystemIdentifier)
+	logger.V(logging.TRACE).Info("Boot identifier", "bootIdentifier", brvd.BootIdentifier)
 
 	return brvd, nil
 }
@@ -44,16 +53,13 @@ type BootRecordVolumeDescriptor struct {
 	BootSystemIdentifier    string               // a-characters string
 	BootIdentifier          string               // Always "CD001"
 	BootSystemUse           [1976]byte           // Boot System Use
+	logger                  logr.Logger          // Logger
 }
 
 // Unmarshal parses the given byte slice and populates the PrimaryVolumeDescriptor struct.
 func (brvd *BootRecordVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) (err error) {
 
-	logging.Logger().Tracef("Unmarshalling %d bytes of boot record volume descriptor data", len(data))
-
-	if len(data) < consts.ISO9660_SECTOR_SIZE {
-		return errors.New("invalid data length")
-	}
+	brvd.logger.V(logging.TRACE).Info("Unmarshalling boot volume descriptor", "len", len(data))
 
 	brvd.Type = VolumeDescriptorType(data[0])
 	brvd.StandardIdentifier = string(data[1:6])

@@ -8,9 +8,16 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/rockridge"
 	"github.com/bgrewell/iso-kit/pkg/susp"
+	"github.com/go-logr/logr"
 	"io"
 	"unicode/utf16"
 )
+
+func NewRecord(logger logr.Logger) *DirectoryRecord {
+	return &DirectoryRecord{
+		logger: logger,
+	}
+}
 
 // DirectoryRecord represents a single Record in a directory.
 type DirectoryRecord struct {
@@ -34,6 +41,7 @@ type DirectoryRecord struct {
 	rockRidgeName           *string
 	rockRidgePermissions    *rockridge.RockRidgePosixEntry
 	rockRidgeTimestamps     *rockridge.RockRidgeTimestamps
+	logger                  logr.Logger
 }
 
 // Unmarshal decodes a DirectoryRecord from binary form.
@@ -42,7 +50,7 @@ func (dr *DirectoryRecord) Unmarshal(data []byte, isoFile io.ReaderAt) error {
 		return errors.New("invalid data length")
 	}
 
-	logging.Logger().Tracef("==== Start Directory Record ====")
+	dr.logger.V(logging.TRACE).Info("Unmarshalling directory record")
 
 	// Basic fields
 	dr.LengthOfDirectoryRecord = data[0]
@@ -57,17 +65,17 @@ func (dr *DirectoryRecord) Unmarshal(data []byte, isoFile io.ReaderAt) error {
 	dr.VolumeSequenceNumber = binary.LittleEndian.Uint16(data[28:30])
 	dr.FileIdentifierLength = data[32]
 
-	// Log the basic fields
-	logging.Logger().Tracef("Length of directory Record: %d", dr.LengthOfDirectoryRecord)
-	logging.Logger().Tracef("Extended attribute Record: %d", dr.ExtendedAttributeRecord)
-	logging.Logger().Tracef("Location of extent: %d", dr.LocationOfExtent)
-	logging.Logger().Tracef("Data length: %d", dr.DataLength)
-	logging.Logger().Tracef("Recording date and time: %d", dr.RecordingDateAndTime)
-	logging.Logger().Tracef("File flags: %s", dr.FileFlags.String())
-	logging.Logger().Tracef("File unit size: %d", dr.FileUnitSize)
-	logging.Logger().Tracef("Interleave gap size: %d", dr.InterleaveGapSize)
-	logging.Logger().Tracef("Volume sequence number: %d", dr.VolumeSequenceNumber)
-	logging.Logger().Tracef("File identifier length: %d", dr.FileIdentifierLength)
+	// Log basic fields
+	dr.logger.V(logging.TRACE).Info("Length of directory record", "lengthOfDirectoryRecord", dr.LengthOfDirectoryRecord)
+	dr.logger.V(logging.TRACE).Info("Extended attribute record", "extendedAttributeRecord", dr.ExtendedAttributeRecord)
+	dr.logger.V(logging.TRACE).Info("Location of extent", "locationOfExtent", dr.LocationOfExtent)
+	dr.logger.V(logging.TRACE).Info("Data length", "dataLength", dr.DataLength)
+	dr.logger.V(logging.TRACE).Info("Recording date and time", "recordingDateAndTime", dr.RecordingDateAndTime)
+	dr.logger.V(logging.TRACE).Info("File flags", "fileFlags", dr.FileFlags.String())
+	dr.logger.V(logging.TRACE).Info("File unit size", "fileUnitSize", dr.FileUnitSize)
+	dr.logger.V(logging.TRACE).Info("Interleave gap size", "interleaveGapSize", dr.InterleaveGapSize)
+	dr.logger.V(logging.TRACE).Info("Volume sequence number", "volumeSequenceNumber", dr.VolumeSequenceNumber)
+	dr.logger.V(logging.TRACE).Info("File identifier length", "fileIdentifierLength", dr.FileIdentifierLength)
 
 	// Handle Joliet vs. non-Joliet file identifiers
 	rawIdentifier := data[33 : 33+dr.FileIdentifierLength]
@@ -89,29 +97,33 @@ func (dr *DirectoryRecord) Unmarshal(data []byte, isoFile io.ReaderAt) error {
 	case "\x01":
 		identifier = "<parent>"
 	}
-	logging.Logger().Tracef("File identifier: %s", identifier)
+	dr.logger.V(logging.TRACE).Info("File identifier", "identifier", identifier)
 
 	// Compute where system use fields begin
 	systemUseStart := 33 + dr.FileIdentifierLength
 	if dr.FileIdentifierLength%2 == 0 {
 		dr.PaddingField = data[systemUseStart : systemUseStart+1]
+		dr.logger.V(logging.TRACE).Info("File identifier is even, padding field set",
+			"paddingField", fmt.Sprintf("%x", dr.PaddingField))
 		systemUseStart++
-		logging.Logger().Tracef("File identifier is even so padding field value set to: %x", dr.PaddingField)
 	} else {
 		dr.PaddingField = nil
 	}
-	logging.Logger().Tracef("System use start calculated at: %d", systemUseStart)
+
+	dr.logger.V(logging.TRACE).Info("System use start calculated", "systemUseStart", systemUseStart)
 
 	if int(systemUseStart) > len(data) {
-		logging.Logger().Errorf("System use start is greater than data length: %d > %d", systemUseStart, len(data))
-		return nil // or return an error, depending on desired behavior
+		dr.logger.Error(nil, "System use start is greater than data length",
+			"systemUseStart", systemUseStart, "dataLength", len(data))
+		// Return nil or error based on desired behavior
+		return nil
 	}
 
 	// Parse system use entries (e.g., SUSP, Rock Ridge, etc.)
 	systemUse := data[systemUseStart:]
 	if len(systemUse) > 0 {
 		dr.SystemUse = systemUse
-		logging.Logger().Tracef("System use: %x (length = %d)", dr.SystemUse, len(dr.SystemUse))
+		dr.logger.V(logging.TRACE).Info("System use data", "hex", fmt.Sprintf("%x", dr.SystemUse), "length", len(dr.SystemUse))
 
 		entries, err := susp.GetSystemUseEntries(systemUse, isoFile)
 		if err != nil {
@@ -129,25 +141,25 @@ func (dr *DirectoryRecord) Unmarshal(data []byte, isoFile io.ReaderAt) error {
 		if dr.hasRockRidge {
 			dr.rockRidgeName = dr.SystemUseEntries.RockRidgeName()
 			if dr.rockRidgeName == nil {
-				logging.Logger().Error("Rock Ridge name is nil")
+				dr.logger.Error(nil, "Rock Ridge name is nil")
 			} else {
-				logging.Logger().Tracef("Rock Ridge name: %s", *dr.rockRidgeName)
+				dr.logger.V(logging.TRACE).Info("Rock Ridge name", "name", *dr.rockRidgeName)
 			}
 
 			dr.rockRidgePermissions = dr.SystemUseEntries.RockRidgePermissions()
 			if dr.rockRidgePermissions == nil {
-				logging.Logger().Error("Rock Ridge permissions are nil")
+				dr.logger.Error(nil, "Rock Ridge permissions are nil")
 			} else {
-				logging.Logger().Tracef("Rock Ridge permissions: %v", dr.rockRidgePermissions)
+				dr.logger.V(logging.TRACE).Info("Rock Ridge permissions", "permissions", dr.rockRidgePermissions)
 			}
 
 			dr.rockRidgeTimestamps = dr.SystemUseEntries.RockRidgeTimestamps()
 		}
 	} else {
-		logging.Logger().Trace("System use: nil")
+		dr.logger.V(logging.TRACE).Info("System use is nil or empty")
 	}
 
-	logging.Logger().Tracef("==== End Directory Record ====")
+	dr.logger.V(logging.TRACE).Info("==== End Directory Record ====")
 	return nil
 }
 

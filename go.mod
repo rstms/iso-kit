@@ -2,7 +2,10 @@ module github.com/bgrewell/iso-kit
 
 go 1.23.1
 
-require github.com/sirupsen/logrus v1.9.3
+require (
+	github.com/go-logr/logr v1.4.2
+	github.com/sirupsen/logrus v1.9.3
+)
 
 require (
 	github.com/stretchr/testify v1.8.4 // indirect

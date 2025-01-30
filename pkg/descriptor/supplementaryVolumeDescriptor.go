@@ -7,86 +7,102 @@ import (
 	. "github.com/bgrewell/iso-kit/pkg/encoding"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/path"
+	"github.com/go-logr/logr"
 	"io"
 	"strings"
 )
 
 // ParseSupplementaryVolumeDescriptor parses the given volume descriptor and returns a SupplementaryVolumeDescriptor.
-func ParseSupplementaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt) (*SupplementaryVolumeDescriptor, error) {
-	logging.Logger().Trace("Parsing supplementary volume descriptor")
+func ParseSupplementaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt, logger logr.Logger) (*SupplementaryVolumeDescriptor, error) {
+	logger.V(logging.TRACE).Info("Parsing supplementary volume descriptor")
+
 	svd := &SupplementaryVolumeDescriptor{
 		isoFile: isoFile,
+		logger:  logger,
 	}
+
 	if err := svd.Unmarshal(vd.Data(), isoFile); err != nil {
-		logging.Logger().Error(err, "Failed to unmarshal supplementary volume descriptor")
+		logger.Error(err, "Failed to unmarshal supplementary volume descriptor")
 		return nil, err
 	}
-	logging.Logger().Trace("Successfully parsed supplementary volume descriptor")
+	logger.V(logging.TRACE).Info("Successfully parsed supplementary volume descriptor")
 
-	logging.Logger().Tracef("Volume descriptor type: %d", svd.Type())
+	logger.V(logging.TRACE).Info("Volume descriptor type", "type", svd.Type())
 	if svd.Type() != VolumeDescriptorSupplementary {
-		logging.Logger().Warnf("Invalid supplementary volume descriptor: %d", svd.Type())
+		logger.Error(nil, "WARNING: Invalid supplementary volume descriptor",
+			"actualType", svd.Type(), "expectedType", VolumeDescriptorSupplementary)
 	}
 
-	logging.Logger().Tracef("Standard identifier: %s", svd.Identifier())
+	logger.V(logging.TRACE).Info("Standard identifier", "identifier", svd.Identifier())
 	if svd.Identifier() != consts.ISO9660_STD_IDENTIFIER {
-		logging.Logger().Warnf("Invalid standard identifier: %s, expected: %s", svd.Identifier(), consts.ISO9660_STD_IDENTIFIER)
+		logger.Error(nil, "WARNING: Invalid standard identifier",
+			"actualIdentifier", svd.Identifier(), "expectedIdentifier", consts.ISO9660_STD_IDENTIFIER)
 	}
 
-	// Note: The version number is not always 1. It can be 1 or 2. 1 is for Standard and 2 is for enhanced.
-	logging.Logger().Tracef("Volume descriptor version: %d", svd.Version())
-	if svd.Version() != consts.ISO9660_VOLUME_DESC_VERSION {
-		logging.Logger().Warnf("Invalid volume descriptor version: %d, expected: %d", svd.Version(), consts.ISO9660_VOLUME_DESC_VERSION)
+	// Note: The version number can be 1 or 2, depending on standard vs. enhanced.
+	v := svd.Version()
+	logger.V(logging.TRACE).Info("Volume descriptor version", "version", v)
+
+	switch v {
+	case 1:
+		logger.V(logging.TRACE).Info("Volume descriptor version indicates a standard ISO9660 descriptor")
+	case 2:
+		logger.V(logging.TRACE).Info("Volume descriptor version indicates an enhanced (Joliet) descriptor")
+	default:
+		logger.Error(nil, "WARNING: Invalid volume descriptor version",
+			"actualVersion", v, "expectedVersions", "1 (standard) or 2 (enhanced)")
 	}
 
-	logging.Logger().Tracef("Volume flags: %v", svd.VolumeFlags)
-	logging.Logger().Tracef("System identifier: %s", svd.SystemIdentifier)
-	logging.Logger().Tracef("Volume identifier: %s", svd.VolumeIdentifier)
-	logging.Logger().Tracef("Volume space size: %d", svd.VolumeSpaceSize)
-	logging.Logger().Tracef("Volume set size: %d", svd.VolumeSetSize)
-	logging.Logger().Tracef("Volume sequence number: %d", svd.VolumeSequenceNumber)
-	logging.Logger().Tracef("Logical block size: %d", svd.LogicalBlockSize)
-	logging.Logger().Tracef("Path table size: %d", svd.PathTableSize())
-	logging.Logger().Tracef("Path table location (L): %d", svd.LPathTableLocation)
-	logging.Logger().Tracef("Path table location (M): %d", svd.MPathTableLocation)
-	logging.Logger().Tracef("Root directory entry: %v", svd.RootDirectoryEntry)
-	logging.Logger().Tracef("Volume set identifier: %s", svd.VolumeSetIdentifier)
-	logging.Logger().Tracef("Publisher identifier: %s", svd.PublisherIdentifier)
-	logging.Logger().Tracef("Data preparer identifier: %s", svd.DataPreparerIdentifier)
-	logging.Logger().Tracef("Application identifier: %s", svd.ApplicationIdentifier)
-	logging.Logger().Tracef("Copyright file identifier: %s", svd.CopyRightFileIdentifier)
-	logging.Logger().Tracef("Abstract file identifier: %s", svd.AbstractFileIdentifier)
-	logging.Logger().Tracef("Bibliographic file identifier: %s", svd.BibliographicFileIdentifier)
-	logging.Logger().Tracef("Volume creation date: %s", svd.VolumeCreationDate)
-	logging.Logger().Tracef("Volume modification date: %s", svd.VolumeModificationDate)
-	logging.Logger().Tracef("Volume expiration date: %s", svd.VolumeExpirationDate)
-	logging.Logger().Tracef("Volume effective date: %s", svd.VolumeEffectiveDate)
-	logging.Logger().Tracef("File structure version: %d", svd.FileStructureVersion)
-	logging.Logger().Tracef("Application use: %s", strings.TrimSpace(string(svd.ApplicationUse[:])))
-
-	// Optional path table locations (not always used in PVD)
-	logging.Logger().Tracef("Optional path table location (L): %d", svd.LOptionalPathTableLocation)
-	logging.Logger().Tracef("Optional path table location (M): %d", svd.MOptionalPathTableLocation)
-
-	// Escape sequences (unique to SVD)
-	logging.Logger().Tracef("Escape sequences: %v", svd.EscapeSequences)
-	if string(svd.EscapeSequences[0:3]) == consts.JOLIET__LEVEL_1_ESCAPE {
-		logging.Logger().Trace("Level 1 Joliet escape sequence detected")
-	} else if string(svd.EscapeSequences[0:3]) == consts.JOLIET__LEVEL_2_ESCAPE {
-		logging.Logger().Trace("Level 2 Joliet escape sequence detected")
-
-	} else if string(svd.EscapeSequences[0:3]) == consts.JOLIET__LEVEL_3_ESCAPE {
-		logging.Logger().Trace("Level 3 Joliet escape sequence detected")
-	}
-	// Log any unused fields, if helpful for debugging
-	logging.Logger().Tracef("Unused field 2: %v", svd.UnusedField2)
-	logging.Logger().Tracef("Unused field 4: %v", svd.UnusedField4)
-	logging.Logger().Tracef("Unused field 5: %v", svd.UnusedField5)
-
-	// Walk the directory entries
-	// TODO: use logging.Logger().Tracef to log the number of directories and number of files
+	// Log remaining fields
+	logSupplementaryVolumeFields(logger, svd)
 
 	return svd, nil
+}
+
+func logSupplementaryVolumeFields(logger logr.Logger, svd *SupplementaryVolumeDescriptor) {
+	logger.V(logging.TRACE).Info("Volume flags", "volumeFlags", svd.VolumeFlags)
+	logger.V(logging.TRACE).Info("System identifier", "systemIdentifier", svd.SystemIdentifier)
+	logger.V(logging.TRACE).Info("Volume identifier", "volumeIdentifier", svd.VolumeIdentifier)
+	logger.V(logging.TRACE).Info("Volume space size", "volumeSpaceSize", svd.VolumeSpaceSize)
+	logger.V(logging.TRACE).Info("Volume set size", "volumeSetSize", svd.VolumeSetSize)
+	logger.V(logging.TRACE).Info("Volume sequence number", "volumeSequenceNumber", svd.VolumeSequenceNumber)
+	logger.V(logging.TRACE).Info("Logical block size", "logicalBlockSize", svd.LogicalBlockSize)
+	logger.V(logging.TRACE).Info("Path table size", "pathTableSize", svd.PathTableSize())
+	logger.V(logging.TRACE).Info("Path table location (L)", "lPathTableLocation", svd.LPathTableLocation)
+	logger.V(logging.TRACE).Info("Path table location (M)", "mPathTableLocation", svd.MPathTableLocation)
+	logger.V(logging.TRACE).Info("Root directory entry", "rootDirectoryEntry", svd.RootDirectoryEntry)
+	logger.V(logging.TRACE).Info("Volume set identifier", "volumeSetIdentifier", svd.VolumeSetIdentifier)
+	logger.V(logging.TRACE).Info("Publisher identifier", "publisherIdentifier", svd.PublisherIdentifier)
+	logger.V(logging.TRACE).Info("Data preparer identifier", "dataPreparerIdentifier", svd.DataPreparerIdentifier)
+	logger.V(logging.TRACE).Info("Application identifier", "applicationIdentifier", svd.ApplicationIdentifier)
+	logger.V(logging.TRACE).Info("Copyright file identifier", "copyrightFileIdentifier", svd.CopyRightFileIdentifier)
+	logger.V(logging.TRACE).Info("Abstract file identifier", "abstractFileIdentifier", svd.AbstractFileIdentifier)
+	logger.V(logging.TRACE).Info("Bibliographic file identifier", "bibliographicFileIdentifier", svd.BibliographicFileIdentifier)
+	logger.V(logging.TRACE).Info("Volume creation date", "volumeCreationDate", svd.VolumeCreationDate)
+	logger.V(logging.TRACE).Info("Volume modification date", "volumeModificationDate", svd.VolumeModificationDate)
+	logger.V(logging.TRACE).Info("Volume expiration date", "volumeExpirationDate", svd.VolumeExpirationDate)
+	logger.V(logging.TRACE).Info("Volume effective date", "volumeEffectiveDate", svd.VolumeEffectiveDate)
+	logger.V(logging.TRACE).Info("File structure version", "fileStructureVersion", svd.FileStructureVersion)
+	logger.V(logging.TRACE).Info("Application use", "applicationUse", strings.TrimSpace(string(svd.ApplicationUse[:])))
+
+	logger.V(logging.TRACE).Info("Optional path table location (L)", "lOptionalPathTableLocation", svd.LOptionalPathTableLocation)
+	logger.V(logging.TRACE).Info("Optional path table location (M)", "mOptionalPathTableLocation", svd.MOptionalPathTableLocation)
+
+	// Escape sequences (unique to SVD)
+	logger.V(logging.TRACE).Info("Escape sequences", "escapeSequences", svd.EscapeSequences)
+	switch string(svd.EscapeSequences[0:3]) {
+	case consts.JOLIET__LEVEL_1_ESCAPE:
+		logger.V(logging.TRACE).Info("Level 1 Joliet escape sequence detected")
+	case consts.JOLIET__LEVEL_2_ESCAPE:
+		logger.V(logging.TRACE).Info("Level 2 Joliet escape sequence detected")
+	case consts.JOLIET__LEVEL_3_ESCAPE:
+		logger.V(logging.TRACE).Info("Level 3 Joliet escape sequence detected")
+	}
+
+	// Log any unused fields if needed for debugging
+	logger.V(logging.TRACE).Info("Unused field 2", "unusedField2", svd.UnusedField2)
+	logger.V(logging.TRACE).Info("Unused field 4", "unusedField4", svd.UnusedField4)
+	logger.V(logging.TRACE).Info("Unused field 5", "unusedField5", svd.UnusedField5)
 }
 
 // SupplementaryVolumeDescriptor represents a supplementary volume descriptor in an ISO file.
@@ -128,6 +144,7 @@ type SupplementaryVolumeDescriptor struct {
 	pathTable                   []*path.PathTableRecord // Path Table
 	isoFile                     io.ReaderAt             // Reader for the ISO file
 	isJoliet                    bool                    // Whether this is a Joliet SVD
+	logger                      logr.Logger             // Logger
 }
 
 // Type returns the volume descriptor type for the SVD.
@@ -177,7 +194,7 @@ func (svd *SupplementaryVolumeDescriptor) IsJoliet() bool {
 // Unmarshal parses the given byte slice and populates the PrimaryVolumeDescriptor struct.
 func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte, isoFile io.ReaderAt) (err error) {
 
-	logging.Logger().Tracef("Unmarshalling %d bytes of supplementary volume descriptor data", len(data))
+	svd.logger.V(logging.TRACE).Info("Unmarshalling supplementary volume descriptor", "len", len(data))
 
 	svd.rawData = data
 

@@ -8,70 +8,79 @@ import (
 	. "github.com/bgrewell/iso-kit/pkg/encoding"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/path"
+	"github.com/go-logr/logr"
 	"io"
 	"strings"
 )
 
 // ParsePrimaryVolumeDescriptor parses the given volume descriptor and returns a PrimaryVolumeDescriptor struct.
-func ParsePrimaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt) (*PrimaryVolumeDescriptor, error) {
-	logging.Logger().Trace("Parsing primary volume descriptor")
+func ParsePrimaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt, logger logr.Logger) (*PrimaryVolumeDescriptor, error) {
+	logger.V(logging.TRACE).Info("Parsing primary volume descriptor")
+
 	pvd := &PrimaryVolumeDescriptor{
 		isoFile: isoFile,
+		logger:  logger,
 	}
+
 	if err := pvd.Unmarshal(vd.Data(), isoFile); err != nil {
-		logging.Logger().Error(err, "Failed to unmarshal primary volume descriptor")
+		logger.Error(err, "Failed to unmarshal primary volume descriptor")
 		return nil, err
 	}
-	logging.Logger().Trace("Successfully parsed primary volume descriptor")
+	logger.V(logging.TRACE).Info("Successfully parsed primary volume descriptor")
 
-	logging.Logger().Tracef("Volume descriptor type: %d", pvd.Type())
+	logger.V(logging.TRACE).Info("Volume descriptor type", "type", pvd.Type())
 	if pvd.Type() != VolumeDescriptorPrimary {
-		logging.Logger().Warnf("Invalid primary volume descriptor: %d", pvd.Type())
+		logger.Error(nil, "WARNING: Invalid primary volume descriptor",
+			"actualType", pvd.Type(), "expectedType", VolumeDescriptorPrimary)
 	}
 
-	logging.Logger().Tracef("Standard identifier: %s", pvd.Identifier())
+	logger.V(logging.TRACE).Info("Standard identifier", "identifier", pvd.Identifier())
 	if pvd.Identifier() != consts.ISO9660_STD_IDENTIFIER {
-		logging.Logger().Warnf("Invalid standard identifier: %s, expected: %s", pvd.Identifier(), consts.ISO9660_STD_IDENTIFIER)
+		logger.Error(nil, "WARNING: Invalid standard identifier",
+			"actualIdentifier", pvd.Identifier(), "expectedIdentifier", consts.ISO9660_STD_IDENTIFIER)
 	}
 
-	logging.Logger().Tracef("Volume descriptor version: %d", pvd.Version())
+	logger.V(logging.TRACE).Info("Volume descriptor version", "version", pvd.Version())
 	if pvd.Version() != consts.ISO9660_VOLUME_DESC_VERSION {
-		logging.Logger().Warnf("Invalid volume descriptor version: %d, expected: %d", pvd.Version(), consts.ISO9660_VOLUME_DESC_VERSION)
+		logger.Error(nil, "WARNING: Invalid volume descriptor version",
+			"actualVersion", pvd.Version(), "expectedVersion", consts.ISO9660_VOLUME_DESC_VERSION)
 	}
 
-	logging.Logger().Tracef("System identifier: %s", pvd.SystemIdentifier)
-	logging.Logger().Tracef("Volume identifier: %s", pvd.VolumeIdentifier)
-	logging.Logger().Tracef("Volume space size: %d", pvd.VolumeSpaceSize)
-	logging.Logger().Tracef("Volume set size: %d", pvd.VolumeSetSize)
-	logging.Logger().Tracef("Volume sequence number: %d", pvd.VolumeSequenceNumber)
-	logging.Logger().Tracef("Logical block size: %d", pvd.LogicalBlockSize)
-	logging.Logger().Tracef("Path table size: %d", pvd.PathTableSize())
-	logging.Logger().Tracef("Path table location (L): %d", pvd.LPathTableLocation)
-	logging.Logger().Tracef("Path table location (M): %d", pvd.MPathTableLocation)
-	logging.Logger().Tracef("Root directory entry: %v", pvd.RootDirectoryEntry)
-	logging.Logger().Tracef("Volume set identifier: %s", pvd.VolumeSetIdentifier)
-	logging.Logger().Tracef("Publisher identifier: %s", pvd.PublisherIdentifier)
-	logging.Logger().Tracef("Data preparer identifier: %s", pvd.DataPreparerIdentifier)
-	logging.Logger().Tracef("Application identifier: %s", pvd.ApplicationIdentifier)
-	logging.Logger().Tracef("Copyright file identifier: %s", pvd.CopyRightFileIdentifier)
-	logging.Logger().Tracef("Abstract file identifier: %s", pvd.AbstractFileIdentifier)
-	logging.Logger().Tracef("Bibliographic file identifier: %s", pvd.BibliographicFileIdentifier)
-	logging.Logger().Tracef("Volume creation date: %s", pvd.VolumeCreationDate)
-	logging.Logger().Tracef("Volume modification date: %s", pvd.VolumeModificationDate)
-	logging.Logger().Tracef("Volume expiration date: %s", pvd.VolumeExpirationDate)
-	logging.Logger().Tracef("Volume effective date: %s", pvd.VolumeEffectiveDate)
-	logging.Logger().Tracef("File structure version: %d", pvd.FileStructureVersion)
-	logging.Logger().Tracef("Application use: %s", strings.TrimSpace(string(pvd.ApplicationUse[:])))
+	logVolumeFields(logger, pvd)
 
-	// Walk the directory entries
 	children, err := pvd.RootDirectoryEntry.GetChildren()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get children: %w", err)
 	}
-	// TODO: use logging.Logger().Tracef to log the number of directories and number of files
-	logging.Logger().Tracef("Number of children: %d", len(children))
+	logger.V(logging.TRACE).Info("Number of children", "count", len(children))
 
 	return pvd, nil
+}
+
+func logVolumeFields(logger logr.Logger, pvd *PrimaryVolumeDescriptor) {
+	logger.V(logging.TRACE).Info("System identifier", "systemIdentifier", pvd.SystemIdentifier)
+	logger.V(logging.TRACE).Info("Volume identifier", "volumeIdentifier", pvd.VolumeIdentifier)
+	logger.V(logging.TRACE).Info("Volume space size", "volumeSpaceSize", pvd.VolumeSpaceSize)
+	logger.V(logging.TRACE).Info("Volume set size", "volumeSetSize", pvd.VolumeSetSize)
+	logger.V(logging.TRACE).Info("Volume sequence number", "volumeSequenceNumber", pvd.VolumeSequenceNumber)
+	logger.V(logging.TRACE).Info("Logical block size", "logicalBlockSize", pvd.LogicalBlockSize)
+	logger.V(logging.TRACE).Info("Path table size", "pathTableSize", pvd.PathTableSize())
+	logger.V(logging.TRACE).Info("Path table location (L)", "lPathTableLocation", pvd.LPathTableLocation)
+	logger.V(logging.TRACE).Info("Path table location (M)", "mPathTableLocation", pvd.MPathTableLocation)
+	logger.V(logging.TRACE).Info("Root directory entry", "rootDirectoryEntry", pvd.RootDirectoryEntry)
+	logger.V(logging.TRACE).Info("Volume set identifier", "volumeSetIdentifier", pvd.VolumeSetIdentifier)
+	logger.V(logging.TRACE).Info("Publisher identifier", "publisherIdentifier", pvd.PublisherIdentifier)
+	logger.V(logging.TRACE).Info("Data preparer identifier", "dataPreparerIdentifier", pvd.DataPreparerIdentifier)
+	logger.V(logging.TRACE).Info("Application identifier", "applicationIdentifier", pvd.ApplicationIdentifier)
+	logger.V(logging.TRACE).Info("Copyright file identifier", "copyrightFileIdentifier", pvd.CopyRightFileIdentifier)
+	logger.V(logging.TRACE).Info("Abstract file identifier", "abstractFileIdentifier", pvd.AbstractFileIdentifier)
+	logger.V(logging.TRACE).Info("Bibliographic file identifier", "bibliographicFileIdentifier", pvd.BibliographicFileIdentifier)
+	logger.V(logging.TRACE).Info("Volume creation date", "volumeCreationDate", pvd.VolumeCreationDate)
+	logger.V(logging.TRACE).Info("Volume modification date", "volumeModificationDate", pvd.VolumeModificationDate)
+	logger.V(logging.TRACE).Info("Volume expiration date", "volumeExpirationDate", pvd.VolumeExpirationDate)
+	logger.V(logging.TRACE).Info("Volume effective date", "volumeEffectiveDate", pvd.VolumeEffectiveDate)
+	logger.V(logging.TRACE).Info("File structure version", "fileStructureVersion", pvd.FileStructureVersion)
+	logger.V(logging.TRACE).Info("Application use", "applicationUse", strings.TrimSpace(string(pvd.ApplicationUse[:])))
 }
 
 // PrimaryVolumeDescriptor represents the primary volume descriptor of an ISO 9660 image.
@@ -112,6 +121,7 @@ type PrimaryVolumeDescriptor struct {
 	UnusedField5                [653]byte               // Unused field should be 0x00
 	pathTable                   []*path.PathTableRecord // Path Table
 	isoFile                     io.ReaderAt             // Reader for the ISO file
+	logger                      logr.Logger             // Logger
 }
 
 // PathTableLocation returns the location of the path table for the primary volume descriptor.
@@ -156,8 +166,9 @@ func (pvd *PrimaryVolumeDescriptor) Data() [2048]byte {
 // Unmarshal parses the given byte slice and populates the PrimaryVolumeDescriptor struct.
 func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte, isoFile io.ReaderAt) (err error) {
 
-	logging.Logger().Tracef("Unmarshalling %d bytes of primary volume descriptor data", len(data))
+	pvd.logger.V(logging.TRACE).Info("Unmarshalling primary volume descriptor", "len", len(data))
 
+	// Save the raw data
 	pvd.rawData = data
 
 	rootRecord := DirectoryRecord{}

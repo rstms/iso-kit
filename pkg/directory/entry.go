@@ -5,6 +5,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/encoding"
 	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/go-logr/logr"
 	"io"
 	"io/fs"
 	"os"
@@ -15,24 +16,34 @@ import (
 // Ensure that DirectoryEntry implements the os.FileInfo interface.
 var _ fs.FileInfo = DirectoryEntry{}
 
+// NewEntry creates a new DirectoryEntry instance.
+func NewEntry(record *DirectoryRecord, reader io.ReaderAt, logger logr.Logger) *DirectoryEntry {
+	return &DirectoryEntry{
+		Record:    record,
+		IsoReader: reader,
+		logger:    logger,
+	}
+}
+
 // DirectoryEntry is an os.FileInfo compatible wrapper around a DirectoryRecord.
 type DirectoryEntry struct {
-	Record           *DirectoryRecord  // Reference to the underlying DirectoryRecord
-	IsoReader        io.ReaderAt       // Reference to the underlying ISO image reader
-	children         []*DirectoryEntry // Lazily populated children
-	parentPath       string            // Parent path of the directory entry
-	StripVersionInfo bool              // Strip version info from filenames (e.g., ";1")
+	Record     *DirectoryRecord  // Reference to the underlying DirectoryRecord
+	IsoReader  io.ReaderAt       // Reference to the underlying ISO image reader
+	children   []*DirectoryEntry // Lazily populated children
+	parentPath string            // Parent path of the directory entry
+	logger     logr.Logger       // Logger
 }
 
 // Name returns the name of the directory entry. If the entry has Rock Ridge extensions, the Rock Ridge name is
 // returned. Otherwise, the FileIdentifier is returned.
 func (d DirectoryEntry) Name() string {
 	if d.HasRockRidge() && d.Record.rockRidgeName != nil {
-		logging.Logger().Tracef("Using Rock Ridge name: %s", *d.Record.rockRidgeName)
+		d.logger.V(logging.TRACE).Info("Using Rock Ridge name",
+			"name", *d.Record.rockRidgeName, "identifier", d.Record.FileIdentifier)
 		return *d.Record.rockRidgeName
 	}
 
-	switch d.Record.FileIdentifier {
+	switch d.Record.FileIdentifier { //TODO: Revisit, should just be returning '.' and '..'?
 	case "\x00":
 		return ""
 	case "\x01":
@@ -50,7 +61,8 @@ func (d DirectoryEntry) Size() int64 {
 // Mode returns the file mode bits for the directory entry.
 func (d DirectoryEntry) Mode() fs.FileMode {
 	if d.HasRockRidge() && d.Record.rockRidgePermissions != nil {
-		logging.Logger().Tracef("Using Rock Ridge permissions: %v", d.Record.rockRidgePermissions)
+		d.logger.V(logging.TRACE).Info("Using Rock Ridge permissions",
+			"permissions", d.Record.rockRidgePermissions, "identifier", d.Record.FileIdentifier)
 		return d.Record.rockRidgePermissions.Mode
 	}
 
@@ -73,7 +85,8 @@ func (d DirectoryEntry) ModTime() time.Time {
 func (d DirectoryEntry) IsDir() bool {
 	if d.HasRockRidge() {
 		if perms := d.Record.rockRidgePermissions; perms != nil {
-			logging.Logger().Tracef("Using Rock Ridge permissions: %v", perms)
+			d.logger.V(logging.TRACE).Info("Using Rock Ridge permissions",
+				"IsDir", perms.Mode.IsDir(), "identifier", d.Record.FileIdentifier)
 			return perms.Mode.IsDir()
 		}
 	}
@@ -82,7 +95,7 @@ func (d DirectoryEntry) IsDir() bool {
 
 // Sys returns the underlying system-specific data.
 func (d DirectoryEntry) Sys() any {
-	//TODO look into what would be appropriate to return here
+	d.logger.V(logging.TRACE).Info("Sys() called but it is not implemented", "return", nil, "name", d.Name())
 	return nil
 }
 
@@ -94,7 +107,7 @@ func (d DirectoryEntry) FullPath() string {
 // HasRockRidge returns true if the directory entry has Rock Ridge extensions.
 func (d DirectoryEntry) HasRockRidge() bool {
 	hasRR := d.Record.HasRockRidge()
-	logging.Logger().Tracef("DirectoryEntry has Rock Ridge: %t", hasRR)
+	d.logger.V(logging.TRACE).Info("DirectoryEntry has Rock Ridge", "hasRR", hasRR, "identifier", d.Record.FileIdentifier)
 	return hasRR
 }
 
@@ -134,7 +147,7 @@ func (d *DirectoryEntry) PopulateChildren(visited map[uint32]bool, parentPath st
 	}
 	visited[d.Record.LocationOfExtent] = true
 
-	logging.Logger().Tracef("=== Processing directory extent: %x", d.Record.LocationOfExtent)
+	d.logger.V(logging.TRACE).Info("Processing directory extent", "extent", d.Record.LocationOfExtent)
 
 	// Create a slice to hold the child DirectoryEntries
 	var children []*DirectoryEntry
@@ -152,7 +165,7 @@ func (d *DirectoryEntry) PopulateChildren(visited map[uint32]bool, parentPath st
 		if err != nil {
 			return fmt.Errorf("failed to read directory sector: %w", err)
 		}
-		logging.Logger().Tracef("Read %d bytes from directory sector at offset %d", n, readOffset)
+		d.logger.V(logging.TRACE).Info("Read directory sector", "offset", readOffset, "length", n)
 
 		// Process each directory entry within this buffer
 		for entryOffset := 0; entryOffset < len(buffer); {
@@ -161,18 +174,18 @@ func (d *DirectoryEntry) PopulateChildren(visited map[uint32]bool, parentPath st
 				break // End of entries in this sector
 			}
 
-			logging.Logger().Tracef("Processing directory entry at offset %d with length %d", entryOffset, entryLength)
+			d.logger.V(logging.TRACE).Info("Processing directory entry", "offset", entryOffset, "length", entryLength)
 
 			// Unmarshal directory record
 			record := &DirectoryRecord{Joliet: d.Record.Joliet}
 			if err := record.Unmarshal(buffer[entryOffset:entryOffset+entryLength], d.IsoReader); err != nil {
 				return fmt.Errorf("failed to parse directory record: %w", err)
 			}
-			logging.Logger().Tracef("Unmarshalled directory record: %v", record.FileIdentifier)
+			d.logger.V(logging.TRACE).Info("Unmarshalled directory record", "identifier", record.FileIdentifier)
 
 			// Skip special entries (0x00, 0x01)
 			if len(record.FileIdentifier) == 1 && (record.FileIdentifier[0] == 0x00 || record.FileIdentifier[0] == 0x01) {
-				logging.Logger().Tracef("Skipping special entry: %x", record.FileIdentifier[0])
+				d.logger.V(logging.TRACE).Info("Skipping special entry", "identifier", record.FileIdentifier)
 				entryOffset += entryLength
 				continue
 			}
@@ -186,7 +199,7 @@ func (d *DirectoryEntry) PopulateChildren(visited map[uint32]bool, parentPath st
 
 			// Recursively populate children if it's a directory
 			if child.IsDir() {
-				logging.Logger().Tracef("Processing child directory: %s", child.Name())
+				d.logger.V(logging.TRACE).Info("Processing child directory", "name", child.Name())
 				if err := child.PopulateChildren(visited, path.Join(child.parentPath, child.Name())); err != nil {
 					return fmt.Errorf("failed to populate children for %s: %w", child.Name(), err)
 				}

@@ -11,7 +11,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	. "github.com/bgrewell/iso-kit/pkg/path"
 	. "github.com/bgrewell/iso-kit/pkg/systemarea"
-	"github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,8 +34,8 @@ type Options struct {
 	rockRidgeEnabled bool
 	eltoritoEnabled  bool
 	bootFileLocation string
-	perferEnhancedVD bool
-	logger           *logrus.Logger
+	preferEnhancedVD bool
+	logger           logr.Logger
 }
 
 // Option represents a function that modifies the Options
@@ -77,7 +77,7 @@ func WithBootFileLocation(location string) Option {
 }
 
 // WithLogger sets the logger for the ISO image
-func WithLogger(logger *logrus.Logger) Option {
+func WithLogger(logger logr.Logger) Option {
 	return func(o *Options) {
 		o.logger = logger
 	}
@@ -93,7 +93,7 @@ func WithParseOnOpen(parseOnOpen bool) Option {
 
 func WithPreferEnhancedVD(preferEnhancedVD bool) Option {
 	return func(o *Options) {
-		o.perferEnhancedVD = preferEnhancedVD
+		o.preferEnhancedVD = preferEnhancedVD
 	}
 }
 
@@ -106,6 +106,7 @@ func Open(location string, opts ...Option) (Image, error) {
 		rockRidgeEnabled: true,
 		eltoritoEnabled:  true,
 		bootFileLocation: "[BOOT]", // Default location for boot files, same as 7zip
+		logger:           logr.Discard(),
 	}
 
 	// Apply options
@@ -170,15 +171,15 @@ type ISO9660Image struct {
 	isoFile                        *os.File
 	rootDirectory                  *directory.DirectoryEntry
 	options                        Options
+	logger                         logr.Logger
 	parsed                         bool
 }
 
 // Open opens an existing ISO 9660 image file
 func (i *ISO9660Image) Open(isoLocation string) (err error) {
 
-	if i.options.logger != nil {
-		logging.SetLogger(i.options.logger)
-	}
+	// Pull the logger out of the options
+	i.logger = i.options.logger
 
 	// Read the ISO 9660 image from the specified location
 	i.isoFile, err = os.Open(isoLocation)
@@ -220,7 +221,7 @@ func (i *ISO9660Image) Parse() (err error) {
 	sa := make([]byte, saEnd)
 	_, err = i.isoFile.ReadAt(sa, 0)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read system area: %w", err)
 	}
 	i.SystemArea = SystemArea(sa)
 
@@ -231,74 +232,74 @@ func (i *ISO9660Image) Parse() (err error) {
 		vdBytes := make([]byte, consts.ISO9660_SECTOR_SIZE)
 		_, err = i.isoFile.ReadAt(vdBytes, idx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to read volume descriptor at offset %d: %w", idx, err)
 		}
 
 		// Parse the volume descriptor
 		vd, err := ParseVolumeDescriptor(vdBytes)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to parse volume descriptor at offset %d: %w", idx, err)
 		}
 
 		switch vd.Type() {
 		case VolumeDescriptorPrimary:
-			logging.Logger().Debug("Processing primary volume descriptor")
-			pvd, err := ParsePrimaryVolumeDescriptor(vd, i.isoFile)
+			i.logger.V(logging.DEBUG).Info("Processing primary volume descriptor", "idx", idx)
+			pvd, err := ParsePrimaryVolumeDescriptor(vd, i.isoFile, i.logger)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse primary volume descriptor: %w", err)
 			}
 
 			err = parsePathTable(i.isoFile, pvd)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse path table: %w", err)
 			}
 
 			i.PrimaryVolumeDescriptor = pvd
 			i.rootDirectory = pvd.RootDirectoryEntry
-			logging.Logger().Debug("Primary volume descriptor processed\n\n")
+			i.logger.V(logging.DEBUG).Info("Processing complete for primary volume descriptor", "idx", idx)
 		case VolumeDescriptorSupplementary:
-			logging.Logger().Debug("Processing supplementary volume descriptor")
-			svd, err := ParseSupplementaryVolumeDescriptor(vd, i.isoFile)
+			i.logger.V(logging.DEBUG).Info("Processing supplementary volume descriptor", "idx", idx)
+			svd, err := ParseSupplementaryVolumeDescriptor(vd, i.isoFile, i.logger)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse supplementary volume descriptor: %w", err)
 			}
 			if i.SupplementaryVolumeDescriptors == nil {
 				i.SupplementaryVolumeDescriptors = make([]*SupplementaryVolumeDescriptor, 0)
-				if i.options.perferEnhancedVD && svd.IsJoliet() {
+				if i.options.preferEnhancedVD && svd.IsJoliet() {
 					i.rootDirectory = svd.RootDirectoryEntry
 				}
 			}
 			i.SupplementaryVolumeDescriptors = append(i.SupplementaryVolumeDescriptors, svd)
-			logging.Logger().Debug("Supplementary volume descriptor processed\n\n")
+			i.logger.V(logging.DEBUG).Info("Processing complete for supplementary volume descriptor", "idx", idx)
 		case VolumeDescriptorBootRecord:
-			logging.Logger().Debug("Processing boot record volume descriptor")
-			i.BootRecordVolumeDescriptor, err = ParseBootRecordVolumeDescriptor(vd)
+			i.logger.V(logging.DEBUG).Info("Processing boot record volume descriptor", "idx", idx)
+			i.BootRecordVolumeDescriptor, err = ParseBootRecordVolumeDescriptor(vd, i.logger)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse boot record volume descriptor: %w", err)
 			}
 			if isElTorito(i.BootRecordVolumeDescriptor.BootSystemIdentifier) && i.options.eltoritoEnabled {
-				logging.Logger().Debug("Processing El Torito boot record volume descriptor")
+				i.logger.V(logging.DEBUG).Info("Processing El Torito boot record volume descriptor", "id", i.BootRecordVolumeDescriptor.BootSystemIdentifier)
 				catalogPointer := binary.LittleEndian.Uint32(i.BootRecordVolumeDescriptor.BootSystemUse[0:4])
 				catalogOffset := int64(catalogPointer) * int64(consts.ISO9660_SECTOR_SIZE)
 				catalogBytes := make([]byte, consts.ISO9660_SECTOR_SIZE)
 				_, err = i.isoFile.ReadAt(catalogBytes, catalogOffset)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to read El Torito catalog at offset %d: %w", catalogOffset, err)
 				}
 				i.eltorito = &eltorito.ElTorito{}
 				err = i.eltorito.UnmarshalBinary(catalogBytes)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to unmarshal El Torito catalog: %w", err)
 				}
 			}
-			logging.Logger().Debug("Boot record volume descriptor processed\n\n")
+			i.logger.V(logging.DEBUG).Info("Processing complete for boot record volume descriptor", "idx", idx)
 		case VolumeDescriptorPartition:
-			logging.Logger().Errorf("Volume Descriptor Partition parser not implemented")
+			i.logger.Error(fmt.Errorf("Volume Descriptor Partition parser not implemented"), "The volume descriptor partition type is not yet supported")
 		case VolumeDescriptorSetTerminator:
-			logging.Logger().Trace("Volume Descriptor Set Terminator found")
+			i.logger.V(logging.DEBUG).Info("Processing volume descriptor set terminator", "idx", idx)
 			done = true
 		default:
-			logging.Logger().Warnf("Unknown volume descriptor type: %d", vd.Type())
+			i.logger.Error(nil, "WARNING: Unknown volume descriptor type", "type", vd.Type())
 		}
 
 		if done {
@@ -306,6 +307,7 @@ func (i *ISO9660Image) Parse() (err error) {
 		}
 	}
 
+	i.logger.V(logging.DEBUG).Info("Finished parsing ISO 9660 image")
 	i.parsed = true
 
 	return nil
@@ -364,7 +366,7 @@ func (i *ISO9660Image) Extract(outputLocation string, includeBootImages bool) (e
 // ExtractFiles extracts all files from the ISO 9660 image
 func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 	// Ensure the ISO 9660 image has been parsed
-	logging.Logger().Infof("Extracting files from ISO 9660 image to %s", outputLocation)
+	i.logger.V(logging.INFO).Info("Extracting files from ISO 9660 image", "outputLocation", outputLocation)
 	if !i.Parsed() {
 		if err := i.Parse(); err != nil {
 			return fmt.Errorf("failed to parse ISO: %w", err)
@@ -379,9 +381,6 @@ func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 
 	// Handle creating all directories first
 	for _, entry := range entries {
-		if entry.Record.FileIdentifier == "A" {
-			logging.Logger().Tracef("Break here and investigate")
-		}
 
 		if entry.IsDir() {
 			fullPath := filepath.Join(outputLocation, entry.FullPath())
@@ -406,7 +405,7 @@ func (i *ISO9660Image) ExtractFiles(outputLocation string) error {
 // ExtractBootImages extracts all boot images from the ISO 9660 image
 func (i *ISO9660Image) ExtractBootImages(outputLocation string) (err error) {
 	// Ensure the output directory exists
-	logging.Logger().Infof("Extracting boot images from ISO 9660 image to %s", outputLocation)
+	i.logger.V(logging.INFO).Info("Extracting boot images from ISO 9660 image", "outputLocation", outputLocation)
 	var stat os.FileInfo
 	if stat, err = os.Stat(outputLocation); err != nil && os.IsNotExist(err) {
 		if stat != nil && !stat.IsDir() {
@@ -446,7 +445,7 @@ func (i *ISO9660Image) extractFile(file *directory.DirectoryEntry, fullPath stri
 	}
 
 	// Open or create the output file
-	outFile, err := os.Create(fullPath) //TODO: Look into stripping the version info
+	outFile, err := os.Create(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", fullPath, err)
 	}
@@ -472,7 +471,6 @@ func (i *ISO9660Image) extractFile(file *directory.DirectoryEntry, fullPath stri
 // isEltorito is a utility function to determine if the boot system identifier is El Torito
 func isElTorito(bootSystemIdentifier string) bool {
 	trimmed := strings.TrimRight(bootSystemIdentifier, "\x00")
-
 	return trimmed == consts.EL_TORITO_BOOT_SYSTEM_ID
 }
 
@@ -544,15 +542,7 @@ func stripVersion(filename string) string {
 	return filename
 }
 
-// BFSAllEntries performs a breadth-first traversal of the ISO filesystem.
-// It starts at the root DirectoryEntry and visits each entry in BFS order.
-// The returned slice will contain the root directory followed by all its
-// descendants, ensuring that directories appear before their contents.
-//
-// You can adapt this approach to parallelize child lookups if needed.
-// For instance, once you pop an entry off the queue, you could spawn a
-// goroutine to fetch children and then enqueue them, limiting concurrency
-// with a semaphore or a bounded worker pool.
+// walkAllEntries is a utility function to walk all entries in the directory tree
 func walkAllEntries(root *directory.DirectoryEntry) ([]*directory.DirectoryEntry, error) {
 	var (
 		result []*directory.DirectoryEntry
@@ -582,6 +572,8 @@ func walkAllEntries(root *directory.DirectoryEntry) ([]*directory.DirectoryEntry
 	return result, nil
 }
 
+// BFSAllEntriesParallel performs a parallel breadth-first search of all entries in the directory tree
+// TODO: This isn't used, still need to benchmark if it's worth using (probably not)
 func BFSAllEntriesParallel(root *directory.DirectoryEntry, maxWorkers int) ([]*directory.DirectoryEntry, error) {
 	var (
 		result []*directory.DirectoryEntry
