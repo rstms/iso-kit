@@ -3,8 +3,8 @@ package descriptor
 import (
 	"encoding/binary"
 	"github.com/bgrewell/iso-kit/pkg/consts"
-	. "github.com/bgrewell/iso-kit/pkg/directory"
-	. "github.com/bgrewell/iso-kit/pkg/encoding"
+	"github.com/bgrewell/iso-kit/pkg/directory"
+	"github.com/bgrewell/iso-kit/pkg/encoding"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/path"
 	"github.com/go-logr/logr"
@@ -107,44 +107,44 @@ func logSupplementaryVolumeFields(logger logr.Logger, svd *SupplementaryVolumeDe
 
 // SupplementaryVolumeDescriptor represents a supplementary volume descriptor in an ISO file.
 type SupplementaryVolumeDescriptor struct {
-	rawData                     [2048]byte              // Raw data from the volume descriptor
-	vdType                      VolumeDescriptorType    // Numeric value
-	standardIdentifier          string                  // Always "CD001"
-	volumeDescriptorVersion     int8                    // Numeric value
-	VolumeFlags                 [1]byte                 // 8 bits of flags
-	SystemIdentifier            string                  // Identifier of the system that can act upon the volume
-	VolumeIdentifier            string                  // Identifier of the volume
-	UnusedField2                [8]byte                 // Unused field should be 0x00
-	VolumeSpaceSize             int32                   // Size of the volume in logical blocks
-	EscapeSequences             [32]byte                // Should be 0x00
-	VolumeSetSize               int16                   // Number of volumes in the volume set
-	VolumeSequenceNumber        int16                   // Number of this volume in the volume set
-	LogicalBlockSize            int16                   // Size of the logical blocks in bytes
-	pathTableSize               int32                   // Size of the path table in bytes
-	LPathTableLocation          uint32                  // Location of the path table for the first directory record
-	LOptionalPathTableLocation  uint32                  // Location of the optional path table
-	MPathTableLocation          uint32                  // Location of the path table for the second directory record
-	MOptionalPathTableLocation  uint32                  // Location of the optional path table
-	RootDirectoryEntry          *DirectoryEntry         // Directory entry for the root directory
-	VolumeSetIdentifier         string                  // Identifier of the volume set
-	PublisherIdentifier         string                  // Identifier of the publisher
-	DataPreparerIdentifier      string                  // Identifier of the data preparer
-	ApplicationIdentifier       string                  // Identifier of the application
-	CopyRightFileIdentifier     string                  // Identifier of the copyright file
-	AbstractFileIdentifier      string                  // Identifier of the abstract file
-	BibliographicFileIdentifier string                  // Identifier of the bibliographic file
-	VolumeCreationDate          string                  // Date and time the volume was created
-	VolumeModificationDate      string                  // Date and time the volume was last modified
-	VolumeExpirationDate        string                  // Date and time the volume expires
-	VolumeEffectiveDate         string                  // Date and time the volume is effective
-	FileStructureVersion        byte                    // Version of the file structure
-	UnusedField4                byte                    // Unused field should be 0x00
-	ApplicationUse              [512]byte               // Application-specific data
-	UnusedField5                [653]byte               // Unused field should be 0x00
-	pathTable                   []*path.PathTableRecord // Path Table
-	isoFile                     io.ReaderAt             // Reader for the ISO file
-	isJoliet                    bool                    // Whether this is a Joliet SVD
-	logger                      logr.Logger             // Logger
+	rawData                     [2048]byte                // Raw data from the volume descriptor
+	vdType                      VolumeDescriptorType      // Numeric value
+	standardIdentifier          string                    // Always "CD001"
+	volumeDescriptorVersion     int8                      // Numeric value
+	VolumeFlags                 [1]byte                   // 8 bits of flags
+	SystemIdentifier            string                    // Identifier of the system that can act upon the volume
+	VolumeIdentifier            string                    // Identifier of the volume
+	UnusedField2                [8]byte                   // Unused field should be 0x00
+	VolumeSpaceSize             int32                     // Size of the volume in logical blocks
+	EscapeSequences             [32]byte                  // Should be 0x00
+	VolumeSetSize               int16                     // Number of volumes in the volume set
+	VolumeSequenceNumber        int16                     // Number of this volume in the volume set
+	LogicalBlockSize            int16                     // Size of the logical blocks in bytes
+	pathTableSize               int32                     // Size of the path table in bytes
+	LPathTableLocation          uint32                    // Location of the path table for the first directory record
+	LOptionalPathTableLocation  uint32                    // Location of the optional path table
+	MPathTableLocation          uint32                    // Location of the path table for the second directory record
+	MOptionalPathTableLocation  uint32                    // Location of the optional path table
+	RootDirectoryEntry          *directory.DirectoryEntry // Directory entry for the root directory
+	VolumeSetIdentifier         string                    // Identifier of the volume set
+	PublisherIdentifier         string                    // Identifier of the publisher
+	DataPreparerIdentifier      string                    // Identifier of the data preparer
+	ApplicationIdentifier       string                    // Identifier of the application
+	CopyRightFileIdentifier     string                    // Identifier of the copyright file
+	AbstractFileIdentifier      string                    // Identifier of the abstract file
+	BibliographicFileIdentifier string                    // Identifier of the bibliographic file
+	VolumeCreationDate          string                    // Date and time the volume was created
+	VolumeModificationDate      string                    // Date and time the volume was last modified
+	VolumeExpirationDate        string                    // Date and time the volume expires
+	VolumeEffectiveDate         string                    // Date and time the volume is effective
+	FileStructureVersion        byte                      // Version of the file structure
+	UnusedField4                byte                      // Unused field should be 0x00
+	ApplicationUse              [512]byte                 // Application-specific data
+	UnusedField5                [653]byte                 // Unused field should be 0x00
+	pathTable                   []*path.PathTableRecord   // Path Table
+	isoFile                     io.ReaderAt               // Reader for the ISO file
+	isJoliet                    bool                      // Whether this is a Joliet SVD
+	logger                      logr.Logger               // Logger
 }
 
 // Type returns the volume descriptor type for the SVD.
@@ -206,7 +206,7 @@ func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_
 		svd.isJoliet = true
 	}
 
-	rootRecord := NewRecord(svd.logger)
+	rootRecord := directory.NewRecord(svd.logger)
 	rootRecord.Joliet = svd.isJoliet
 	err = rootRecord.Unmarshal(data[156:190], isoFile)
 	if err != nil {
@@ -220,23 +220,23 @@ func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_
 	svd.SystemIdentifier = string(data[8:40])
 	svd.VolumeIdentifier = string(data[40:72])
 	copy(svd.UnusedField2[:], data[72:80])
-	svd.VolumeSpaceSize, err = UnmarshalInt32LSBMSB(data[80:88])
+	svd.VolumeSpaceSize, err = encoding.UnmarshalInt32LSBMSB(data[80:88])
 	if err != nil {
 		return err
 	}
-	svd.VolumeSetSize, err = UnmarshalInt16LSBMSB(data[120:124])
+	svd.VolumeSetSize, err = encoding.UnmarshalInt16LSBMSB(data[120:124])
 	if err != nil {
 		return err
 	}
-	svd.VolumeSequenceNumber, err = UnmarshalInt16LSBMSB(data[124:128])
+	svd.VolumeSequenceNumber, err = encoding.UnmarshalInt16LSBMSB(data[124:128])
 	if err != nil {
 		return err
 	}
-	svd.LogicalBlockSize, err = UnmarshalInt16LSBMSB(data[128:132])
+	svd.LogicalBlockSize, err = encoding.UnmarshalInt16LSBMSB(data[128:132])
 	if err != nil {
 		return err
 	}
-	svd.pathTableSize, err = UnmarshalInt32LSBMSB(data[132:140])
+	svd.pathTableSize, err = encoding.UnmarshalInt32LSBMSB(data[132:140])
 	if err != nil {
 		return err
 	}
@@ -244,7 +244,7 @@ func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_
 	svd.LOptionalPathTableLocation = binary.LittleEndian.Uint32(data[144:148])
 	svd.MPathTableLocation = binary.BigEndian.Uint32(data[148:152])
 	svd.MOptionalPathTableLocation = binary.BigEndian.Uint32(data[152:156])
-	svd.RootDirectoryEntry = NewEntry(rootRecord, isoFile, svd.logger)
+	svd.RootDirectoryEntry = directory.NewEntry(rootRecord, isoFile, svd.logger)
 	svd.VolumeSetIdentifier = string(data[190:318])
 	svd.PublisherIdentifier = string(data[318:446])
 	svd.DataPreparerIdentifier = string(data[446:574])

@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
-	. "github.com/bgrewell/iso-kit/pkg/directory"
-	. "github.com/bgrewell/iso-kit/pkg/encoding"
+	"github.com/bgrewell/iso-kit/pkg/directory"
+	"github.com/bgrewell/iso-kit/pkg/encoding"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/path"
 	"github.com/go-logr/logr"
@@ -85,43 +85,43 @@ func logVolumeFields(logger logr.Logger, pvd *PrimaryVolumeDescriptor) {
 
 // PrimaryVolumeDescriptor represents the primary volume descriptor of an ISO 9660 image.
 type PrimaryVolumeDescriptor struct {
-	rawData                     [2048]byte              // Raw data from the volume descriptor
-	vdType                      VolumeDescriptorType    // Always 1
-	standardIdentifier          string                  // Always "CD001"
-	volumeDescriptorVersion     int8                    // Always 1
-	UnusedField1                [1]byte                 // Unused field should be 0x00
-	SystemIdentifier            string                  // Identifier of the system that can act upon the volume
-	VolumeIdentifier            string                  // Identifier of the volume
-	UnusedField2                [8]byte                 // Unused field should be 0x00
-	VolumeSpaceSize             int32                   // Size of the volume in logical blocks
-	UnusedField3                [32]byte                // Unused field should be 0x00
-	VolumeSetSize               int16                   // Number of volumes in the volume set
-	VolumeSequenceNumber        int16                   // Number of this volume in the volume set
-	LogicalBlockSize            int16                   // Size of the logical blocks in bytes
-	pathTableSize               int32                   // Size of the path table in bytes
-	LPathTableLocation          uint32                  // Location of the path table for the first directory record
-	LOptionalPathTableLocation  uint32                  // Location of the optional path table
-	MPathTableLocation          uint32                  // Location of the path table for the second directory record
-	MOptionalPathTableLocation  uint32                  // Location of the optional path table
-	RootDirectoryEntry          *DirectoryEntry         // Directory entry for the root directory
-	VolumeSetIdentifier         string                  // Identifier of the volume set
-	PublisherIdentifier         string                  // Identifier of the publisher
-	DataPreparerIdentifier      string                  // Identifier of the data preparer
-	ApplicationIdentifier       string                  // Identifier of the application
-	CopyRightFileIdentifier     string                  // Identifier of the copyright file
-	AbstractFileIdentifier      string                  // Identifier of the abstract file
-	BibliographicFileIdentifier string                  // Identifier of the bibliographic file
-	VolumeCreationDate          string                  // Date and time the volume was created
-	VolumeModificationDate      string                  // Date and time the volume was last modified
-	VolumeExpirationDate        string                  // Date and time the volume expires
-	VolumeEffectiveDate         string                  // Date and time the volume is effective
-	FileStructureVersion        byte                    // Version of the file structure
-	UnusedField4                byte                    // Unused field should be 0x00
-	ApplicationUse              [512]byte               // Application-specific data
-	UnusedField5                [653]byte               // Unused field should be 0x00
-	pathTable                   []*path.PathTableRecord // Path Table
-	isoFile                     io.ReaderAt             // Reader for the ISO file
-	logger                      logr.Logger             // Logger
+	rawData                     [2048]byte                // Raw data from the volume descriptor
+	vdType                      VolumeDescriptorType      // Always 1
+	standardIdentifier          string                    // Always "CD001"
+	volumeDescriptorVersion     int8                      // Always 1
+	UnusedField1                [1]byte                   // Unused field should be 0x00
+	SystemIdentifier            string                    // Identifier of the system that can act upon the volume
+	VolumeIdentifier            string                    // Identifier of the volume
+	UnusedField2                [8]byte                   // Unused field should be 0x00
+	VolumeSpaceSize             int32                     // Size of the volume in logical blocks
+	UnusedField3                [32]byte                  // Unused field should be 0x00
+	VolumeSetSize               int16                     // Number of volumes in the volume set
+	VolumeSequenceNumber        int16                     // Number of this volume in the volume set
+	LogicalBlockSize            int16                     // Size of the logical blocks in bytes
+	pathTableSize               int32                     // Size of the path table in bytes
+	LPathTableLocation          uint32                    // Location of the path table for the first directory record
+	LOptionalPathTableLocation  uint32                    // Location of the optional path table
+	MPathTableLocation          uint32                    // Location of the path table for the second directory record
+	MOptionalPathTableLocation  uint32                    // Location of the optional path table
+	RootDirectoryEntry          *directory.DirectoryEntry // Directory entry for the root directory
+	VolumeSetIdentifier         string                    // Identifier of the volume set
+	PublisherIdentifier         string                    // Identifier of the publisher
+	DataPreparerIdentifier      string                    // Identifier of the data preparer
+	ApplicationIdentifier       string                    // Identifier of the application
+	CopyRightFileIdentifier     string                    // Identifier of the copyright file
+	AbstractFileIdentifier      string                    // Identifier of the abstract file
+	BibliographicFileIdentifier string                    // Identifier of the bibliographic file
+	VolumeCreationDate          string                    // Date and time the volume was created
+	VolumeModificationDate      string                    // Date and time the volume was last modified
+	VolumeExpirationDate        string                    // Date and time the volume expires
+	VolumeEffectiveDate         string                    // Date and time the volume is effective
+	FileStructureVersion        byte                      // Version of the file structure
+	UnusedField4                byte                      // Unused field should be 0x00
+	ApplicationUse              [512]byte                 // Application-specific data
+	UnusedField5                [653]byte                 // Unused field should be 0x00
+	pathTable                   []*path.PathTableRecord   // Path Table
+	isoFile                     io.ReaderAt               // Reader for the ISO file
+	logger                      logr.Logger               // Logger
 }
 
 // PathTableLocation returns the location of the path table for the primary volume descriptor.
@@ -171,7 +171,7 @@ func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]b
 	// Save the raw data
 	pvd.rawData = data
 
-	rootRecord := NewRecord(pvd.logger)
+	rootRecord := directory.NewRecord(pvd.logger)
 	err = rootRecord.Unmarshal(data[156:190], isoFile)
 	if err != nil {
 		return err
@@ -184,24 +184,24 @@ func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]b
 	pvd.SystemIdentifier = string(data[8:40])
 	pvd.VolumeIdentifier = string(data[40:72])
 	copy(pvd.UnusedField2[:], data[72:80])
-	pvd.VolumeSpaceSize, err = UnmarshalInt32LSBMSB(data[80:88])
+	pvd.VolumeSpaceSize, err = encoding.UnmarshalInt32LSBMSB(data[80:88])
 	if err != nil {
 		return err
 	}
 	copy(pvd.UnusedField3[:], data[88:120])
-	pvd.VolumeSetSize, err = UnmarshalInt16LSBMSB(data[120:124])
+	pvd.VolumeSetSize, err = encoding.UnmarshalInt16LSBMSB(data[120:124])
 	if err != nil {
 		return err
 	}
-	pvd.VolumeSequenceNumber, err = UnmarshalInt16LSBMSB(data[124:128])
+	pvd.VolumeSequenceNumber, err = encoding.UnmarshalInt16LSBMSB(data[124:128])
 	if err != nil {
 		return err
 	}
-	pvd.LogicalBlockSize, err = UnmarshalInt16LSBMSB(data[128:132])
+	pvd.LogicalBlockSize, err = encoding.UnmarshalInt16LSBMSB(data[128:132])
 	if err != nil {
 		return err
 	}
-	pvd.pathTableSize, err = UnmarshalInt32LSBMSB(data[132:140])
+	pvd.pathTableSize, err = encoding.UnmarshalInt32LSBMSB(data[132:140])
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]b
 	pvd.LOptionalPathTableLocation = binary.LittleEndian.Uint32(data[144:148])
 	pvd.MPathTableLocation = binary.BigEndian.Uint32(data[148:152])
 	pvd.MOptionalPathTableLocation = binary.BigEndian.Uint32(data[152:156])
-	pvd.RootDirectoryEntry = NewEntry(rootRecord, isoFile, pvd.logger)
+	pvd.RootDirectoryEntry = directory.NewEntry(rootRecord, isoFile, pvd.logger)
 	pvd.VolumeSetIdentifier = string(data[190:318])
 	pvd.PublisherIdentifier = string(data[318:446])
 	pvd.DataPreparerIdentifier = string(data[446:574])
