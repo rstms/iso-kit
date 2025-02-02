@@ -63,7 +63,7 @@ func CreateProgressCallback(spinner *yacspin.Spinner) options.ProgressCallback {
 }
 
 // InitializeSpinner sets up and starts the yacspin spinner.
-func InitializeSpinner(outputdir string) (*yacspin.Spinner, error) {
+func InitializeSpinner() (*yacspin.Spinner, error) {
 	// Define spinner options
 	settings := yacspin.Config{
 		Frequency:         100 * time.Millisecond,
@@ -75,7 +75,6 @@ func InitializeSpinner(outputdir string) (*yacspin.Spinner, error) {
 		StopFailColors:    []string{"fgHiRed"},
 		StopFailCharacter: "✗",
 		StopCharacter:     "✓",
-		StopMessage:       fmt.Sprintf(" All files extracted successfully to %s!", outputdir),
 	}
 
 	// Create a new spinner
@@ -174,6 +173,7 @@ func main() {
 			os.Exit(1)
 		}
 		running = false
+		spinner.StopMessage(fmt.Sprintf(" All files extracted successfully to %s!", outputDir))
 		spinner.Stop()
 	}()
 
