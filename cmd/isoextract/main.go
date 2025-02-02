@@ -110,7 +110,7 @@ func main() {
 	flag.Parse()
 
 	// Setup callback for progress updates
-	spinner, err := InitializeSpinner(*outputDir)
+	spinner, err := InitializeSpinner()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize spinner: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Progress updates will be disabled.\n")
