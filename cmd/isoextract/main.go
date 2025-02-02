@@ -173,7 +173,7 @@ func main() {
 			os.Exit(1)
 		}
 		running = false
-		spinner.StopMessage(fmt.Sprintf(" All files extracted successfully to %s!", outputDir))
+		spinner.StopMessage(fmt.Sprintf(" All files extracted successfully to %s!", *outputDir))
 		spinner.Stop()
 	}()
 
