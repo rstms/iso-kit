@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit"
 	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/bgrewell/iso-kit/pkg/options"
 	"os"
 	"time"
 
@@ -25,7 +26,7 @@ func truncateString(input string, maxLength int) string {
 }
 
 // CreateProgressCallback returns a ProgressCallback that updates the spinner's message.
-func CreateProgressCallback(spinner *yacspin.Spinner) iso.ProgressCallback {
+func CreateProgressCallback(spinner *yacspin.Spinner) options.ProgressCallback {
 	return func(
 		currentFilename string,
 		bytesTransferred int64,
@@ -148,14 +149,14 @@ func main() {
 	// Open the ISO image with the specified flags
 	img, err := iso.Open(
 		isoPath,
-		iso.WithEltoritoEnabled(*bootImages),
-		iso.WithRockRidgeEnabled(*rockRidge),
-		iso.WithParseOnOpen(*enhancedVol),
-		iso.WithBootFileLocation(*bootDir),
-		iso.WithPreferEnhancedVD(*enhancedVol),
-		iso.WithStripVersionInfo(*stripVer),
-		iso.WithProgress(progressCallback),
-		iso.WithLogger(log),
+		options.WithEltoritoEnabled(*bootImages),
+		options.WithRockRidgeEnabled(*rockRidge),
+		options.WithParseOnOpen(*enhancedVol),
+		options.WithBootFileLocation(*bootDir),
+		options.WithPreferEnhancedVD(*enhancedVol),
+		options.WithStripVersionInfo(*stripVer),
+		options.WithProgress(progressCallback),
+		options.WithLogger(log),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open ISO: %v\n", err)

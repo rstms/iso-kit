@@ -9,3 +9,11 @@ const (
 	JOLIET__LEVEL_2_ESCAPE      = "%/C"
 	JOLIET__LEVEL_3_ESCAPE      = "%/E"
 )
+
+// ISOType represents the type of ISO image
+type ISOType int
+
+const (
+	TYPE_ISO9660 ISOType = iota
+	TYPE_UDF
+)
