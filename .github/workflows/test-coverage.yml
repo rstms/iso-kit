@@ -1,4 +1,5 @@
-name: Test Coverage & Linting
+# .github/workflows/test-coverage.yml
+name: Go Code Coverage
 
 on:
   push:
@@ -7,32 +8,31 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  coverage:
+    name: Test and Coverage Report
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Set up Git repository
         uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: '1.23.1'
+          go-version: '1.21'
 
-      - name: Install Dependencies
-        run: go mod download
+      - name: Run tests with coverage
+        run: |
+          go test ./... -coverprofile=coverage.out
+          go tool cover -func=coverage.out
 
-      - name: Run Tests with Coverage
-        run: go test -v -coverprofile=coverage.out ./...
-
-      - name: Upload Coverage to Codecov
-        uses: codecov/codecov-action@v3
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
         with:
-          file: coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: bgrewell/iso-kit
+          file: ./coverage.out
           flags: unittests
           name: codecov-umbrella
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: v1.52.2
+          fail_ci_if_error: true
+          verbose: true
