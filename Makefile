@@ -1,40 +1,95 @@
-# GO Parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) glean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GORUN=$(GOCMD) run
+# Makefile for iso-kit
 
-# Binary Name (edit if you don't want the default)
-BINARY_NAME=$(shell basename $(CURDIR))
+# Binary names for the two CLI applications
+EXTRACT_BIN = isoextract
+BUILDER_BIN = isobuilder
 
-# Compiler flags
-LD_FLAGS=-X 'main.version=$$(git describe --tags)' -X 'main.date=$$(date +"%Y.%m.%d_%H%M%S")' -X 'main.rev=$$(git rev-parse --short HEAD)' -X 'main.branch=$$(git rev-parse --abbrev-ref HEAD | tr -d '\040\011\012\015\n')'
+# Pattern to test all packages in your module
+PKG = ./...
 
-# Tool Arguments
-TAGS=json,yaml,xml
+# Get version information from git (if available)
+VERSION = $(shell git describe --tags --always --dirty)
 
-build: deps
-    export GO111MODULE=on
-    [ -d bin ] || mkdir bin
-    GOOS=linux $(GOBUILD) -ldflags "$(LD_FLAGS)" -o bin/$(BINARY_NAME) -v .
-    GOOS=windows $(OBUILD) -ldflags "$(LD_FLAGS)" -o bin/$(BINARY_NAME).exe -v .
-    
+.PHONY: all build build-isoextract build-isobuilder run-isoextract run-isobuilder \
+        test lint vet fmt mod-tidy coverage clean help
+
+# Default target builds both applications.
+all: build
+
+# Build both isoextract and isobuilder.
+build: build-isoextract build-isobuilder
+
+# Build the isoextract binary.
+build-isoextract:
+	@echo "Building isoextract..."
+	go build -ldflags "-X main.version=$(VERSION)" -o $(EXTRACT_BIN) cmd/isoextract/main.go
+
+# Build the isobuilder binary.
+build-isobuilder:
+	@echo "Building isobuilder..."
+	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILDER_BIN) cmd/isobuilder/main.go
+
+# Run the isoextract binary.
+run-isoextract: build-isoextract
+	@echo "Running isoextract..."
+	./$(EXTRACT_BIN)
+
+# Run the isobuilder binary.
+run-isobuilder: build-isobuilder
+	@echo "Running isobuilder..."
+	./$(BUILDER_BIN)
+
+# Run tests with verbose output.
+test:
+	@echo "Running tests..."
+	go test -v $(PKG)
+
+# Run golangci-lint.
+lint:
+	@echo "Running golangci-lint..."
+	golangci-lint run
+
+# Run go vet for static analysis.
+vet:
+	@echo "Running go vet..."
+	go vet $(PKG)
+
+# Format code using go fmt.
+fmt:
+	@echo "Running go fmt..."
+	go fmt $(PKG)
+
+# Tidy up module dependencies.
+mod-tidy:
+	@echo "Running go mod tidy..."
+	go mod tidy
+
+# Run tests with coverage and print a coverage summary.
+coverage:
+	@echo "Running tests with coverage..."
+	go test -coverprofile=coverage.out $(PKG)
+	@go tool cover -func=coverage.out
+
+# Clean up generated binaries and coverage file.
 clean:
-    $(GOCLEAN)
-    rm -rf bin
+	@echo "Cleaning up..."
+	rm -f $(EXTRACT_BIN) $(BUILDER_BIN) coverage.out
 
-deps:
-    export GOPRIVATE=github.com/bengrewell
-    $(GOGET) -u ./...
-
-install-tools:
-    go install google.golang.org/protobuf/cmd/protoc-gen-go
-    go get github.com/fatih/gomodifytags
-
-run:
-    $(GORUN) cmd/main.go
-    
-tags:
-    gomodifytags -file $(FILE) -all -add-tags $(TAGS) -w
+# Display help about available targets.
+help:
+	@echo "Usage: make [target]"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  build             - Build both isoextract and isobuilder"
+	@echo "  build-isoextract  - Build the isoextract binary"
+	@echo "  build-isobuilder  - Build the isobuilder binary"
+	@echo "  run-isoextract    - Run the isoextract binary"
+	@echo "  run-isobuilder    - Run the isobuilder binary"
+	@echo "  test              - Run tests"
+	@echo "  lint              - Run golangci-lint"
+	@echo "  vet               - Run go vet"
+	@echo "  fmt               - Run go fmt"
+	@echo "  mod-tidy          - Run go mod tidy"
+	@echo "  coverage          - Run tests with coverage"
+	@echo "  clean             - Clean up generated binaries and coverage file"
+	@echo "  help              - Display this help message"
