@@ -13,6 +13,10 @@ import (
 	"golang.org/x/term"
 )
 
+var (
+	version = "dev"
+)
+
 // truncateString truncates the input string to the specified max length.
 // If truncation occurs, it prepends "..." to indicate the string has been shortened.
 func truncateString(input string, maxLength int) string {
@@ -130,6 +134,7 @@ func main() {
 
 	// Ensure we have an ISO path
 	if flag.NArg() < 1 {
+		fmt.Println("isoextract v" + version)
 		fmt.Println("Usage: isoextract [options] <path-to-iso>")
 		fmt.Println("  -v               Enable verbose (debug) logging")
 		fmt.Println("  -vv              Enable trace logging")

@@ -91,3 +91,6 @@ fabric.properties
 
 # Don't commit ubuntu iso file
 ubuntu.iso
+
+# Don't commit the bin directory
+bin/

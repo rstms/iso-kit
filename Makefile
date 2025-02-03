@@ -1,8 +1,11 @@
 # Makefile for iso-kit
 
-# Binary names for the two CLI applications
-EXTRACT_BIN = isoextract
-BUILDER_BIN = isobuilder
+# Output directory for binaries
+BIN_DIR = bin
+
+# Binary names for the two CLI applications, output in the bin directory.
+EXTRACT_BIN = $(BIN_DIR)/isoextract
+BUILDER_BIN = $(BIN_DIR)/isobuilder
 
 # Pattern to test all packages in your module
 PKG = ./...
@@ -22,11 +25,13 @@ build: build-isoextract build-isobuilder
 # Build the isoextract binary.
 build-isoextract:
 	@echo "Building isoextract..."
+	mkdir -p $(BIN_DIR)
 	go build -ldflags "-X main.version=$(VERSION)" -o $(EXTRACT_BIN) cmd/isoextract/main.go
 
 # Build the isobuilder binary.
 build-isobuilder:
 	@echo "Building isobuilder..."
+	mkdir -p $(BIN_DIR)
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILDER_BIN) cmd/isobuilder/main.go
 
 # Run the isoextract binary.
@@ -73,7 +78,7 @@ coverage:
 # Clean up generated binaries and coverage file.
 clean:
 	@echo "Cleaning up..."
-	rm -f $(EXTRACT_BIN) $(BUILDER_BIN) coverage.out
+	rm -rf $(BIN_DIR) coverage.out
 
 # Display help about available targets.
 help:
