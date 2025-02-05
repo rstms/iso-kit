@@ -8,10 +8,16 @@ import (
 	"github.com/go-logr/logr"
 )
 
+// NewPathTableRecord creates a new PathTableRecord with the provided logger.
+// Parameters:
+// - logger: logr.Logger - the logger to be used by the PathTableRecord.
+// Returns:
+// - *PathTableRecord - a pointer to the newly created PathTableRecord.
 func NewPathTableRecord(logger logr.Logger) *PathTableRecord {
 	return &PathTableRecord{logger: logger}
 }
 
+// PathTableRecord represents a record in the path table.
 type PathTableRecord struct {
 	DirectoryIdentifierLength     byte        // Directory identifier length
 	ExtendedAttributeRecordLength byte        // Extended attribute record length
@@ -23,8 +29,12 @@ type PathTableRecord struct {
 }
 
 // Unmarshal parses the Path Table Record from the given data slice.
+// Parameters:
+// - data: []byte - the byte slice containing the path table record data.
+// Returns:
+// - error - an error if the data is invalid or parsing fails.
 func (ptr *PathTableRecord) Unmarshal(data []byte) error {
-	if len(data) < 8 {
+	if len(data) < 9 {
 		return errors.New("invalid data length")
 	}
 
@@ -44,12 +54,7 @@ func (ptr *PathTableRecord) Unmarshal(data []byte) error {
 	// Handle padding
 	ptr.Padding = nil
 	if ptr.DirectoryIdentifierLength%2 != 0 {
-		padEnd := dirIDEnd + 1
-		if padEnd > len(data) {
-			return fmt.Errorf("padding out of range: end=%d, data len=%d", padEnd, len(data))
-		}
-		// Make a copy of the padding slice
-		ptr.Padding = append([]byte(nil), data[dirIDEnd:padEnd]...)
+		ptr.Padding = []byte{0}
 	}
 
 	// Single grouped logging call (TRACE level)
