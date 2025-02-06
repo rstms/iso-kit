@@ -90,11 +90,18 @@ func Create(location string, opts ...options.Option) (Image, error) {
 		opt(&options)
 	}
 
-	image := &pkg.ISO9660Image{Options: options}
-	if err := image.Create(location); err != nil {
-		return nil, fmt.Errorf("failed to create ISO: %w", err)
+	// Validate ISO type
+	switch options.IsoType {
+	case consts.TYPE_ISO9660:
+		image := &pkg.ISO9660Image{Options: options}
+		if err := image.Create(location); err != nil {
+			return nil, fmt.Errorf("failed to create ISO: %w", err)
+		}
+		return image, nil
+	default:
+		return nil, fmt.Errorf("unsupported ISO type: %d", options.IsoType)
 	}
-	return image, nil
+
 }
 
 // Image represents an ISO image
@@ -112,4 +119,5 @@ type Image interface {
 	ExtractBootImages(outputLocation string) error
 	Extract(outputLocation string, includeBootImages bool) error
 	GetAllEntries() ([]*directory.DirectoryEntry, error)
+	Write(path string) error
 }

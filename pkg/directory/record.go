@@ -10,13 +10,111 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/susp"
 	"github.com/go-logr/logr"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 	"unicode/utf16"
 )
 
+// BuildDirectoryRecords walks the given root path and builds a slice of DirectoryRecords.
+// Note: For a complete ISO9660 image you will need to build a hierarchy (including . and .. entries)
+// and assign extent locations. This example just creates a flat list.
+func BuildDirectoryRecords(rootPath string, logger logr.Logger) ([]*DirectoryRecord, error) {
+	var records []*DirectoryRecord
+
+	err := filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		// Retrieve file info
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		// Create a directory record for this file/directory.
+		rec, err := NewDirectoryRecordFromFileInfo(logger, info)
+		if err != nil {
+			return err
+		}
+
+		// Optionally, you might want to store the full path or a relative path in your record.
+		// For example, if you need to create a hierarchical directory structure.
+		// rec.FullPath = path  // (Assuming you add such a field.)
+
+		records = append(records, rec)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk directory: %w", err)
+	}
+	return records, nil
+}
+
+// NewRecord creates a new DirectoryRecord instance.
 func NewRecord(logger logr.Logger) *DirectoryRecord {
 	return &DirectoryRecord{
 		logger: logger,
 	}
+}
+
+// NewDirectoryRecordFromFileInfo creates a DirectoryRecord for the given file or directory.
+// Note: For a real ISO9660 image you will later need to assign LocationOfExtent and
+// (for directories) compute DataLength based on the size of the directory record.
+func NewDirectoryRecordFromFileInfo(logger logr.Logger, info os.FileInfo) (*DirectoryRecord, error) {
+	dr := NewRecord(logger)
+	// For now, set ExtendedAttributeRecord to zero.
+	dr.ExtendedAttributeRecord = 0
+
+	// LocationOfExtent and DataLength will be assigned later when laying out the image.
+	dr.LocationOfExtent = 0
+	if !info.IsDir() {
+		dr.DataLength = uint32(info.Size())
+	} else {
+		// For directories, DataLength is the size (in bytes) of the directory record.
+		// You may compute this later when you have built the complete directory.
+		dr.DataLength = 0
+	}
+
+	// Set the recording date and time (7 bytes).
+	dr.RecordingDateAndTime = FormatRecordingDateAndTime(info.ModTime())
+
+	// Set file flags – at minimum mark as directory if applicable.
+	dr.FileFlags = &FileFlags{}
+	var flags uint8 = 0
+	if info.IsDir() {
+		flags |= 0x02 // Bit 1: Directory flag per ISO9660
+	}
+	// (Other flags like AssociatedFile, Protection, etc., remain false for now.)
+	dr.FileFlags.Set(flags)
+
+	// For simplicity, assume FileUnitSize and InterleaveGapSize are zero.
+	dr.FileUnitSize = 0
+	dr.InterleaveGapSize = 0
+
+	// VolumeSequenceNumber is normally 1.
+	dr.VolumeSequenceNumber = 1
+
+	// Set the file identifier to the base name.
+	// (In a full implementation, you’d also need to handle special cases for root and parent.)
+	id, err := validateISO9660Identifier(info.Name())
+	if err != nil {
+		// Either reject or handle the error (perhaps transforming the name)
+		return nil, err
+	}
+	dr.FileIdentifier = id
+	dr.FileIdentifierLength = uint8(len(id))
+
+	// For now, we don’t include a PaddingField or any SystemUse.
+	dr.PaddingField = nil
+	dr.SystemUse = nil
+
+	// Compute the overall record length.
+	dr.computeLength()
+
+	return dr, nil
 }
 
 // DirectoryRecord represents a single Record in a directory.
@@ -208,6 +306,18 @@ func (dr DirectoryRecord) RockRidgeTimestamps() *rockridge.RockRidgeTimestamps {
 	return dr.rockRidgeTimestamps
 }
 
+// computeLength computes and sets the LengthOfDirectoryRecord field.
+// According to ISO9660, the record length is:
+// 33 bytes (fixed fields) + FileIdentifier length + optional 1-byte padding (if FileIdentifier length is even)
+func (dr *DirectoryRecord) computeLength() {
+	idLen := len(dr.FileIdentifier)
+	recLen := 33 + idLen
+	if idLen%2 == 0 {
+		recLen++ // add 1 byte for padding if needed
+	}
+	dr.LengthOfDirectoryRecord = uint8(recLen)
+}
+
 // DecodeJolietName converts a Joliet file identifier (UTF-16BE) into a Go string.
 func DecodeJolietName(data []byte) (string, error) {
 	if len(data) == 0 {
@@ -269,4 +379,44 @@ func validateJolietCharacters(name string) error {
 		}
 	}
 	return nil
+}
+
+// FormatRecordingDateAndTime converts a time.Time to a 7-byte array per ISO9660 spec.
+// Byte 0: Year since 1900, Byte 1: Month, Byte 2: Day, Byte 3: Hour,
+// Byte 4: Minute, Byte 5: Second, Byte 6: GMT offset in 15-minute intervals.
+func FormatRecordingDateAndTime(t time.Time) []byte {
+	year := t.Year() - 1900
+	month := int(t.Month())
+	day := t.Day()
+	hour := t.Hour()
+	minute := t.Minute()
+	second := t.Second()
+	_, offsetSeconds := t.Zone()
+	// Convert offset (in seconds) to number of 15-minute intervals.
+	offset15 := int8(offsetSeconds / 60 / 15)
+	return []byte{
+		byte(year),
+		byte(month),
+		byte(day),
+		byte(hour),
+		byte(minute),
+		byte(second),
+		byte(offset15),
+	}
+}
+
+// validateISO9660Identifier ensures the identifier conforms to ISO9660 constraints.
+// It may convert the string to uppercase and check for allowed characters.
+func validateISO9660Identifier(id string) (string, error) {
+	// Convert to uppercase for standard compliance.
+	id = strings.ToUpper(id)
+
+	// Allowed characters: A-Z, 0-9, underscore, and maybe a limited set of punctuation.
+	// Adjust the allowed set according to your target ISO9660 level.
+	for _, r := range id {
+		if !((r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return "", fmt.Errorf("invalid character %q in ISO9660 file identifier", r)
+		}
+	}
+	return id, nil
 }

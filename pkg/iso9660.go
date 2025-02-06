@@ -58,8 +58,22 @@ func (i *ISO9660Image) Open(isoLocation string) (err error) {
 }
 
 // Create creates a new ISO 9660 image file
-func (i *ISO9660Image) Create(isoLocation string) (err error) {
-	return errors.New("ISO 9660 image creation is not yet implemented")
+func (i *ISO9660Image) Create(rootPath string) (err error) {
+
+	// Parse the directory, create directory records and path tables
+	// If Rock Ridge is enabled, populate the Rock Ridge extensions
+	dirRecords, err := directory.BuildDirectoryRecords(rootPath, i.logger)
+	for _, record := range dirRecords {
+		i.logger.V(logging.TRACE).Info("Directory Record", "record", record)
+	}
+
+	// Populate a primary volume descriptor
+
+	// If el torito is enabled, look at the boot file location and populate the boot record volume descriptor
+
+	// If enhanced volume descriptors are enabled, populate the supplementary volume descriptors
+
+	return nil
 }
 
 // Close closes the ISO 9660 image file
@@ -305,6 +319,18 @@ func (i *ISO9660Image) GetAllEntries() ([]*directory.DirectoryEntry, error) {
 
 	// Start extracting from the root directory
 	return walkAllEntries(i.RootDirectory())
+}
+
+// Write writes the ISO 9660 image to the specified path
+func (i *ISO9660Image) Write(path string) error {
+
+	// Open the file and set to i.isoFile
+	// Write the system area
+	// Write the primary volume descriptor
+	// Write the path table
+	// Write the secondary volume descriptors
+
+	return errors.New("ISO 9660 image writing is not yet implemented")
 }
 
 // extractFileWithProgress is a utility function to extract the contents of a file with progress updates
