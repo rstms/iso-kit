@@ -2,6 +2,8 @@
 
 [![codecov](https://codecov.io/gh/bgrewell/iso-kit/graph/badge.svg?token=D15C46IECF)](https://codecov.io/gh/bgrewell/iso-kit)
 
+> **Notice:** This project is in an early development phase and may not yet be fully stable or feature complete. As it evolves, you may encounter significant changes to the API, behavior, and overall functionality.
+
 **iso-kit** is a Go library designed to simplify working with ISO 9660 disk images. Whether you're creating, extracting, or inspecting ISO files, iso-kit provides a reliable and feature-rich solution with advanced support for key extensions like Rock Ridge and El Torito.
 
 In addition to being a library for developers, **iso-kit** also includes some command line tools for working with ISO
