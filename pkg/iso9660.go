@@ -117,7 +117,7 @@ func (i *ISO9660Image) Parse() (err error) {
 		switch vd.Type() {
 		case descriptor.VolumeDescriptorPrimary:
 			i.logger.V(logging.DEBUG).Info("Processing primary volume descriptor", "idx", idx)
-			pvd, err := descriptor.ParsePrimaryVolumeDescriptor(vd, i.isoFile, i.logger)
+			pvd, err := descriptor.ParsePrimaryVolumeDescriptor(vd, i.isoFile, i.Options.RockRidgeEnabled, i.logger)
 			if err != nil {
 				return fmt.Errorf("failed to parse primary volume descriptor: %w", err)
 			}
@@ -131,8 +131,12 @@ func (i *ISO9660Image) Parse() (err error) {
 			i.rootDirectory = pvd.RootDirectoryEntry
 			i.logger.V(logging.DEBUG).Info("Processing complete for primary volume descriptor", "idx", idx)
 		case descriptor.VolumeDescriptorSupplementary:
+			if !i.Options.PreferEnhancedVD {
+				i.logger.V(logging.INFO).Info("Enhanced parsing disabled. Skipping Enhanced Volume Descriptor")
+				continue
+			}
 			i.logger.V(logging.DEBUG).Info("Processing supplementary volume descriptor", "idx", idx)
-			svd, err := descriptor.ParseSupplementaryVolumeDescriptor(vd, i.isoFile, i.logger)
+			svd, err := descriptor.ParseSupplementaryVolumeDescriptor(vd, i.isoFile, i.Options.RockRidgeEnabled, i.logger)
 			if err != nil {
 				return fmt.Errorf("failed to parse supplementary volume descriptor: %w", err)
 			}

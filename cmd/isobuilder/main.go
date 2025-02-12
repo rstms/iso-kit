@@ -12,7 +12,7 @@ func main() {
 
 	log := logging.NewSimpleLogger(os.Stderr, logging.TRACE, true)
 
-	img, err := iso.Create("/tmp/ubuntu",
+	img, err := iso.Create("./iso",
 		options.WithLogger(log),
 	)
 	if err != nil {

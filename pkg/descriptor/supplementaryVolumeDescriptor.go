@@ -13,7 +13,7 @@ import (
 )
 
 // ParseSupplementaryVolumeDescriptor parses the given volume descriptor and returns a SupplementaryVolumeDescriptor.
-func ParseSupplementaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt, logger logr.Logger) (*SupplementaryVolumeDescriptor, error) {
+func ParseSupplementaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt, useRR bool, logger logr.Logger) (*SupplementaryVolumeDescriptor, error) {
 	logger.V(logging.TRACE).Info("Parsing supplementary volume descriptor")
 
 	svd := &SupplementaryVolumeDescriptor{
@@ -145,6 +145,7 @@ type SupplementaryVolumeDescriptor struct {
 	isoFile                     io.ReaderAt               // Reader for the ISO file
 	isJoliet                    bool                      // Whether this is a Joliet SVD
 	logger                      logr.Logger               // Logger
+	useRR                       bool                      // Use RockRdige Extensions
 }
 
 // Type returns the volume descriptor type for the SVD.
@@ -244,7 +245,7 @@ func (svd *SupplementaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_
 	svd.LOptionalPathTableLocation = binary.LittleEndian.Uint32(data[144:148])
 	svd.MPathTableLocation = binary.BigEndian.Uint32(data[148:152])
 	svd.MOptionalPathTableLocation = binary.BigEndian.Uint32(data[152:156])
-	svd.RootDirectoryEntry = directory.NewEntry(rootRecord, isoFile, svd.logger)
+	svd.RootDirectoryEntry = directory.NewEntry(rootRecord, isoFile, svd.useRR, svd.logger)
 	svd.VolumeSetIdentifier = string(data[190:318])
 	svd.PublisherIdentifier = string(data[318:446])
 	svd.DataPreparerIdentifier = string(data[446:574])

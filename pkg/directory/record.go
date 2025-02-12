@@ -8,6 +8,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/rockridge"
 	"github.com/bgrewell/iso-kit/pkg/susp"
+	"github.com/bgrewell/iso-kit/pkg/validation"
 	"github.com/go-logr/logr"
 	"io"
 	"io/fs"
@@ -97,12 +98,16 @@ func NewDirectoryRecordFromFileInfo(logger logr.Logger, info os.FileInfo) (*Dire
 	// VolumeSequenceNumber is normally 1.
 	dr.VolumeSequenceNumber = 1
 
-	// Set the file identifier to the base name.
-	// (In a full implementation, you’d also need to handle special cases for root and parent.)
-	id, err := validateISO9660Identifier(info.Name())
-	if err != nil {
-		// Either reject or handle the error (perhaps transforming the name)
-		return nil, err
+	// Set the file identifier to the base name. (use upper-case variant of the name)
+	id := strings.ToUpper(info.Name())
+	valid := false
+	if info.IsDir() {
+		valid = validation.ValidISO9660DirIdentifier(id)
+	} else {
+		valid = validation.ValidISO9660FileIdentifier(id)
+	}
+	if !valid {
+		return nil, fmt.Errorf("invalid file identifier: %s", id)
 	}
 	dr.FileIdentifier = id
 	dr.FileIdentifierLength = uint8(len(id))
@@ -403,20 +408,4 @@ func FormatRecordingDateAndTime(t time.Time) []byte {
 		byte(second),
 		byte(offset15),
 	}
-}
-
-// validateISO9660Identifier ensures the identifier conforms to ISO9660 constraints.
-// It may convert the string to uppercase and check for allowed characters.
-func validateISO9660Identifier(id string) (string, error) {
-	// Convert to uppercase for standard compliance.
-	id = strings.ToUpper(id)
-
-	// Allowed characters: A-Z, 0-9, underscore, and maybe a limited set of punctuation.
-	// Adjust the allowed set according to your target ISO9660 level.
-	for _, r := range id {
-		if !((r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
-			return "", fmt.Errorf("invalid character %q in ISO9660 file identifier", r)
-		}
-	}
-	return id, nil
 }

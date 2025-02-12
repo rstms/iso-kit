@@ -14,12 +14,13 @@ import (
 )
 
 // ParsePrimaryVolumeDescriptor parses the given volume descriptor and returns a PrimaryVolumeDescriptor struct.
-func ParsePrimaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt, logger logr.Logger) (*PrimaryVolumeDescriptor, error) {
+func ParsePrimaryVolumeDescriptor(vd VolumeDescriptor, isoFile io.ReaderAt, useRR bool, logger logr.Logger) (*PrimaryVolumeDescriptor, error) {
 	logger.V(logging.TRACE).Info("Parsing primary volume descriptor")
 
 	pvd := &PrimaryVolumeDescriptor{
 		isoFile: isoFile,
 		logger:  logger,
+		useRR:   useRR,
 	}
 
 	if err := pvd.Unmarshal(vd.Data(), isoFile); err != nil {
@@ -122,6 +123,7 @@ type PrimaryVolumeDescriptor struct {
 	pathTable                   []*path.PathTableRecord   // Path Table
 	isoFile                     io.ReaderAt               // Reader for the ISO file
 	logger                      logr.Logger               // Logger
+	useRR                       bool                      // Use RockRidge Extensions
 }
 
 // PathTableLocation returns the location of the path table for the primary volume descriptor.
@@ -209,7 +211,7 @@ func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]b
 	pvd.LOptionalPathTableLocation = binary.LittleEndian.Uint32(data[144:148])
 	pvd.MPathTableLocation = binary.BigEndian.Uint32(data[148:152])
 	pvd.MOptionalPathTableLocation = binary.BigEndian.Uint32(data[152:156])
-	pvd.RootDirectoryEntry = directory.NewEntry(rootRecord, isoFile, pvd.logger)
+	pvd.RootDirectoryEntry = directory.NewEntry(rootRecord, isoFile, pvd.useRR, pvd.logger)
 	pvd.VolumeSetIdentifier = string(data[190:318])
 	pvd.PublisherIdentifier = string(data[318:446])
 	pvd.DataPreparerIdentifier = string(data[446:574])

@@ -94,3 +94,6 @@ ubuntu.iso
 
 # Don't commit the bin directory
 bin/
+
+# Don't commit the iso directory which contains files for isobuilder testing
+iso/

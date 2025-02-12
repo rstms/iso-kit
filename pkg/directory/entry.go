@@ -17,7 +17,7 @@ import (
 var _ fs.FileInfo = DirectoryEntry{}
 
 // NewEntry creates a new DirectoryEntry instance.
-func NewEntry(record *DirectoryRecord, reader io.ReaderAt, logger logr.Logger) *DirectoryEntry {
+func NewEntry(record *DirectoryRecord, reader io.ReaderAt, useRR bool, logger logr.Logger) *DirectoryEntry {
 	return &DirectoryEntry{
 		Record:    record,
 		IsoReader: reader,
@@ -32,12 +32,13 @@ type DirectoryEntry struct {
 	children   []*DirectoryEntry // Lazily populated children
 	parentPath string            // Parent path of the directory entry
 	logger     logr.Logger       // Logger
+	useRR      bool              // Use RockRidge
 }
 
 // Name returns the name of the directory entry. If the entry has Rock Ridge extensions, the Rock Ridge name is
 // returned. Otherwise, the FileIdentifier is returned.
 func (d DirectoryEntry) Name() string {
-	if d.HasRockRidge() && d.Record.rockRidgeName != nil {
+	if d.useRR && d.HasRockRidge() && d.Record.rockRidgeName != nil {
 		d.logger.V(logging.TRACE).Info("Using Rock Ridge name",
 			"name", *d.Record.rockRidgeName, "identifier", d.Record.FileIdentifier)
 		return *d.Record.rockRidgeName
