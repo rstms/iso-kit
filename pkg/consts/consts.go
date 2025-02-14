@@ -1,53 +1,60 @@
 package consts
 
 const (
-	ISO9660_STD_IDENTIFIER      = "CD001"
-	ISO9660_VOLUME_DESC_VERSION = 0x1
-	ISO9660_SECTOR_SIZE         = 2048
-	EL_TORITO_BOOT_SYSTEM_ID    = "EL TORITO SPECIFICATION"
-	JOLIET__LEVEL_1_ESCAPE      = "%/@"
-	JOLIET__LEVEL_2_ESCAPE      = "%/C"
-	JOLIET__LEVEL_3_ESCAPE      = "%/E"
+	// Number of system area sectors.
+	ISO9660_SYSTEM_AREA_SECTORS = 16
 
-	// a-characters: 57 characters in the following positions of the International Reference Version
-	//    2/0 - 2/2
-	//    2/5 - 2/15
-	//    3/0 - 3/15
-	//    4/1 - 4/15
-	//    5/0 - 5/10
-	//    5/15
+	// Standard ISO9660 identifier.
+	ISO9660_STD_IDENTIFIER = "CD001"
+
+	// ISO9660 volume descriptor version (always 1).
+	ISO9660_VOLUME_DESC_VERSION = 1
+
+	// ISO9660 default sector size.
+	ISO9660_SECTOR_SIZE = 2048
+
+	// ISO9660 application use area size
+	ISO9660_APPLICATION_USE_SIZE = 512
+
+	// JOLIET level 1, 2, and 3 escape sequences.
+	JOLIET_LEVEL_1_ESCAPE = "%/@"
+	JOLIET_LEVEL_2_ESCAPE = "%/C"
+	JOLIET_LEVEL_3_ESCAPE = "%/E"
+
+	// El Torito bootable cdrom system identifier.
+	EL_TORITO_BOOT_SYSTEM_ID = "EL TORITO SPECIFICATION"
+
+	// a-characters set which are specified in the International Reference Version at the following positions.
+	//   | 2/0 - 2/2
+	//   | 2/5 - 2/15
+	//   | 3/0 - 3/15
+	//   | 4/1 - 4/15
+	//   | 5/0 - 5/10
+	//   | 5/15
 	A_CHARACTERS = " !\"%&'()*+,-./0123456789:;<=>?ABCDEFGHIJKLMNOPQRSTUVWXYZ_"
 
-	// NOTE: This relates to SVD volumes, specifically Joliet
-	// a1-characters: A subset of the c-characters. This subset shall be subject to agreement between the originator
-	//                and the recipient of the volume.
-	A1_CHARACTERS = C_CHARACTERS
+	// c-characters set which are the coded graphic character sets identified by the escape sequences in a Joliet SVD.
+	// | All code points between (00)(00) and (00)(1F), inclusive. (Control Characters)
+	// | (00)(2A) '*'(Asterisk)
+	// | (00)(2F) '/' (Forward Slash)
+	// | (00)(3A) ':' (Colon)
+	// | (00)(3B) ';' (Semicolon)
+	// | (00)(3F) '?' (Question Mark)
+	// | (00)(5C) '\' (Backslash)
 
-	// NOTE: This relates to SVD volumes, specifically Joliet
-	// c-characters: The characters of the coded graphic character sets identified by the escape sequences in a SVD
-	C_CHARACTERS = ""
+	// a1-characters set which are a subset of the c-characters. This subset shall be subject to agreement between the
+	// originator and the recipient of the volume.
 
 	// d-characters: 37 characters in the following positions of the International Reference Version
-	//    3/0 - 3/9
-	//    4/1 - 5/10
-	//    5/15
+	// | 3/0 - 3/9
+	// | 4/1 - 5/10
+	// | 5/15
 	D_CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_"
 
-	// NOTE: This relates to SVD volumes, specifically Joliet
-	// d1-characters: A subset of the a1-characters. This subset shall be subject to agreement between the originator
-	//                and the recipient of the volume
-	D1_CHARACTERS = A1_CHARACTERS
+	// Separators allowed by ISO9660 0x2E and 0x3B.
+	ISO9660_SEPARATOR_1 = "."
+	ISO9660_SEPARATOR_2 = ";"
 
-	SEPERATOR_1 = "." // 0x2E
-	SEPERATOR_2 = ";" // 0x3B
-
-	FILLER = " " // 0x20
-)
-
-// ISOType represents the type of ISO image
-type ISOType int
-
-const (
-	TYPE_ISO9660 ISOType = iota
-	TYPE_UDF
+	// ISO9660 Filler 0x20 (space)
+	ISO9660_FILLER = " "
 )

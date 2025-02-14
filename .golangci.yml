@@ -1,7 +1,0 @@
-# .golangci.yml
-run:
-  # Skip directories that match this regex pattern.
-  # This ensures that any files under paths like ../../go/pkg/mod/...
-  # are not linted.
-  skip-dirs:
-    - ".*\\/go\\/pkg\\/mod\\/.*"

@@ -3,145 +3,134 @@ package encoding
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"strings"
 	"time"
 )
 
-// MarshalString encodes the given string as a byte array padded to the given length
-func MarshalString(s string, padToLength int) []byte {
-	if len(s) > padToLength {
-		s = s[:padToLength]
-	}
-	missingPadding := padToLength - len(s)
-	s = s + strings.Repeat(" ", missingPadding)
-	return []byte(s)
+// MarshalBothByteOrders32 converts a uint32 value into an 8-byte field that
+// encodes the value in both little‑endian and big‑endian orders.
+// The resulting byte order is: (yz, wx, uv, st, st, uv, wx, yz),
+// where (st uv wx yz) is the hexadecimal representation of the value.
+func MarshalBothByteOrders32(val uint32) [8]byte {
+	var data [8]byte
+	// First four bytes: little-endian representation.
+	binary.LittleEndian.PutUint32(data[0:4], val)
+	// Last four bytes: big-endian representation.
+	binary.BigEndian.PutUint32(data[4:8], val)
+	return data
 }
 
-// UnmarshalInt32LSBMSB decodes a 32-bit integer in both byte orders, as defined in ECMA-119 7.3.3
-func UnmarshalInt32LSBMSB(data []byte) (int32, error) {
-	if len(data) < 8 {
-		return 0, io.ErrUnexpectedEOF
+// UnmarshalBothByteOrders32 converts an 8-byte field encoded in both little‑
+// and big‑endian orders back to a uint32 value. It verifies that both halves
+// are equal. If they are not, it returns an error.
+func UnmarshalBothByteOrders32(data [8]byte) (uint32, error) {
+	// Decode little-endian value from the first four bytes.
+	little := binary.LittleEndian.Uint32(data[0:4])
+	// Decode big-endian value from the last four bytes.
+	big := binary.BigEndian.Uint32(data[4:8])
+	if little != big {
+		return 0, fmt.Errorf("mismatched both-byte orders: little-endian value %d != big-endian value %d", little, big)
 	}
-
-	lsb := int32(binary.LittleEndian.Uint32(data[0:4]))
-	msb := int32(binary.BigEndian.Uint32(data[4:8]))
-
-	if lsb != msb {
-		return 0, fmt.Errorf("little-endian and big-endian value mismatch: %d != %d", lsb, msb)
-	}
-
-	return lsb, nil
+	return little, nil
 }
 
-// UnmarshalUint32LSBMSB is the same as UnmarshalInt32LSBMSB but returns an unsigned integer
-func UnmarshalUint32LSBMSB(data []byte) (uint32, error) {
-	n, err := UnmarshalInt32LSBMSB(data)
-	return uint32(n), err
+// MarshalBothByteOrders16 converts a uint16 value into a 4-byte field that
+// encodes the value in both little‑endian and big‑endian orders.
+// The resulting field has the layout: (yz, wx, wx, yz), where (wx, yz) is the
+// hexadecimal representation of the value.
+// For example, for the value 0x1234, it returns [0x34, 0x12, 0x12, 0x34].
+func MarshalBothByteOrders16(val uint16) [4]byte {
+	var data [4]byte
+	// First two bytes: little-endian representation.
+	binary.LittleEndian.PutUint16(data[0:2], val)
+	// Next two bytes: big-endian representation.
+	binary.BigEndian.PutUint16(data[2:4], val)
+	return data
 }
 
-// UnmarshalInt16LSBMSB decodes a 16-bit integer in both byte orders, as defined in ECMA-119 7.3.3
-func UnmarshalInt16LSBMSB(data []byte) (int16, error) {
-	if len(data) < 4 {
-		return 0, io.ErrUnexpectedEOF
+// UnmarshalBothByteOrders16 converts a 4-byte field encoded in both little‑
+// and big‑endian orders back to a uint16 value. It verifies that both halves
+// match; if they do not, it returns an error.
+func UnmarshalBothByteOrders16(data [4]byte) (uint16, error) {
+	// Read the little-endian value from the first two bytes.
+	little := binary.LittleEndian.Uint16(data[0:2])
+	// Read the big-endian value from the last two bytes.
+	big := binary.BigEndian.Uint16(data[2:4])
+	if little != big {
+		return 0, fmt.Errorf("mismatched both-byte orders: little-endian value %d != big-endian value %d", little, big)
 	}
-
-	lsb := int16(binary.LittleEndian.Uint16(data[0:2]))
-	msb := int16(binary.BigEndian.Uint16(data[2:4]))
-
-	if lsb != msb {
-		return 0, fmt.Errorf("little-endian and big-endian value mismatch: %d != %d", lsb, msb)
-	}
-
-	return lsb, nil
+	return little, nil
 }
 
-// WriteInt32LSBMSB writes a 32-bit integer in both byte orders, as defined in ECMA-119 7.3.3
-func WriteInt32LSBMSB(dst []byte, value int32) {
-	_ = dst[7] // early bounds check to guarantee safety of writes below
-	binary.LittleEndian.PutUint32(dst[0:4], uint32(value))
-	binary.BigEndian.PutUint32(dst[4:8], uint32(value))
+// MarshalDateTime converts a time.Time into a 17-byte field following ISO9660 8.4.26.1.
+// The first 16 bytes contain ASCII digits in the format:
+//
+//	YYYY MM DD hh mm ss cc
+//
+// and the 17th byte is the time zone offset (in 15-minute intervals) as a signed integer.
+func MarshalDateTime(t time.Time) ([17]byte, error) {
+	var b [17]byte
+
+	year, month, day := t.Date()
+	hour, minute, second := t.Clock()
+	// Calculate hundredths of a second (each hundredth = 10,000,000 ns)
+	hundredths := t.Nanosecond() / 10000000
+
+	// Format date and time into a 16-character string.
+	// For example: "20230327140509" plus hundredths "45" → "2023032714050945"
+	dtStr := fmt.Sprintf("%04d%02d%02d%02d%02d%02d%02d",
+		year, int(month), day, hour, minute, second, hundredths)
+	if len(dtStr) != 16 {
+		return b, fmt.Errorf("formatted date/time length is not 16: got %d", len(dtStr))
+	}
+	copy(b[:16], dtStr)
+
+	// Determine the time zone offset in seconds.
+	_, offsetSec := t.Zone()
+	// Convert offset to number of 15-minute intervals.
+	offset15 := int8(offsetSec / (15 * 60))
+	// Validate offset range: must be between -48 and +52.
+	if offset15 < -48 || offset15 > 52 {
+		return b, fmt.Errorf("time zone offset %d (in 15-minute intervals: %d) is out of allowed range", offsetSec, offset15)
+	}
+	// Set the 17th byte to the offset.
+	b[16] = byte(offset15)
+	return b, nil
 }
 
-// WriteInt16LSBMSB writes a 16-bit integer in both byte orders, as defined in ECMA-119 7.2.3
-func WriteInt16LSBMSB(dst []byte, value int16) {
-	_ = dst[3] // early bounds check to guarantee safety of writes below
-	binary.LittleEndian.PutUint16(dst[0:2], uint16(value))
-	binary.BigEndian.PutUint16(dst[2:4], uint16(value))
-}
-
-// DecodeDirectoryTime converts a byte slice in the directory entry custom format into a Go time.Time struct.
-func DecodeDirectoryTime(data []byte) (time.Time, error) {
-	if len(data) != 7 {
-		return time.Time{}, fmt.Errorf("invalid data length: expected 7 bytes, got %d", len(data))
+// UnmarshalDateTime converts a 17-byte ISO9660 date/time field into a time.Time.
+// It expects the first 16 bytes to be ASCII digits representing
+// YYYY MM DD hh mm ss cc, and the 17th byte as the offset in 15-minute intervals.
+func UnmarshalDateTime(data [17]byte) (time.Time, error) {
+	// Extract the date/time string from the first 16 bytes.
+	dtStr := string(data[:16])
+	if len(dtStr) != 16 {
+		return time.Time{}, fmt.Errorf("data length for date/time is not 16: got %d", len(dtStr))
 	}
 
-	// Extract components
-	year := int(data[0]) + 1900
-	month := time.Month(data[1])
-	day := int(data[2])
-	hour := int(data[3])
-	minute := int(data[4])
-	second := int(data[5])
-	offset := int8(data[6]) // signed value for offset
-
-	// Validate components
-	if month < 1 || month > 12 {
-		return time.Time{}, fmt.Errorf("invalid month: %d", month)
-	}
-	if day < 1 || day > 31 {
-		return time.Time{}, fmt.Errorf("invalid day: %d", day)
-	}
-	if hour < 0 || hour > 23 {
-		return time.Time{}, fmt.Errorf("invalid hour: %d", hour)
-	}
-	if minute < 0 || minute > 59 {
-		return time.Time{}, fmt.Errorf("invalid minute: %d", minute)
-	}
-	if second < 0 || second > 59 {
-		return time.Time{}, fmt.Errorf("invalid second: %d", second)
-	}
-	if offset < -48 || offset > 52 {
-		return time.Time{}, fmt.Errorf("invalid GMT offset: %d", offset)
+	// Parse the fields using fixed-width substrings.
+	var (
+		year, month, day     int
+		hour, minute, second int
+		hundredths           int
+	)
+	// Instead of using Sscanf (which can be tricky with fixed widths),
+	// we parse the substrings directly.
+	_, err := fmt.Sscanf(dtStr, "%4d%2d%2d%2d%2d%2d%2d",
+		&year, &month, &day, &hour, &minute, &second, &hundredths)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse date/time string %q: %w", dtStr, err)
 	}
 
-	// Convert GMT offset to hours and minutes
-	offsetMinutes := int(offset) * 15
+	// Convert hundredths of a second into nanoseconds.
+	nsec := hundredths * 10000000
 
-	// Build Go time.Time struct
-	location := time.FixedZone("CustomTimeZone", offsetMinutes*60)
-	return time.Date(year, month, day, hour, minute, second, 0, location), nil
-}
+	// The 17th byte is the time zone offset in 15-minute intervals.
+	offset15 := int8(data[16])
+	offsetSec := int(offset15) * 15 * 60
 
-// EncodeDirectoryTime converts a Go time.Time struct into the custom directory entry time format.
-func EncodeDirectoryTime(t time.Time) ([]byte, error) {
-	year := t.Year() - 1900
-	if year < 0 || year > 255 {
-		return nil, fmt.Errorf("year out of range: %d", t.Year())
-	}
-
-	month := t.Month()
-	day := t.Day()
-	hour := t.Hour()
-	minute := t.Minute()
-	second := t.Second()
-
-	// Calculate GMT offset in 15-minute intervals
-	_, offsetSeconds := t.Zone()
-	offsetMinutes := offsetSeconds / 60
-	offset := offsetMinutes / 15
-	if offset < -48 || offset > 52 {
-		return nil, fmt.Errorf("GMT offset out of range: %d", offset)
-	}
-
-	// Build the byte slice
-	return []byte{
-		byte(year),
-		byte(month),
-		byte(day),
-		byte(hour),
-		byte(minute),
-		byte(second),
-		byte(offset),
-	}, nil
+	// Create a fixed location for the time zone.
+	loc := time.FixedZone("ISO9660", offsetSec)
+	// Construct the time.Time value.
+	t := time.Date(year, time.Month(month), day, hour, minute, second, nsec, loc)
+	return t, nil
 }
