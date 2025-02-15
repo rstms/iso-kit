@@ -67,6 +67,7 @@ func UnmarshalBothByteOrders16(data [4]byte) (uint16, error) {
 //	YYYY MM DD hh mm ss cc
 //
 // and the 17th byte is the time zone offset (in 15-minute intervals) as a signed integer.
+// Note: This format is used in Volume Descriptors
 func MarshalDateTime(t time.Time) ([17]byte, error) {
 	var b [17]byte
 
@@ -100,6 +101,7 @@ func MarshalDateTime(t time.Time) ([17]byte, error) {
 // UnmarshalDateTime converts a 17-byte ISO9660 date/time field into a time.Time.
 // It expects the first 16 bytes to be ASCII digits representing
 // YYYY MM DD hh mm ss cc, and the 17th byte as the offset in 15-minute intervals.
+// Note: This format is used in Volume Descriptors
 func UnmarshalDateTime(data [17]byte) (time.Time, error) {
 	// Extract the date/time string from the first 16 bytes.
 	dtStr := string(data[:16])
@@ -133,4 +135,76 @@ func UnmarshalDateTime(data [17]byte) (time.Time, error) {
 	// Construct the time.Time value.
 	t := time.Date(year, time.Month(month), day, hour, minute, second, nsec, loc)
 	return t, nil
+}
+
+// MarshalRecordingDateTime converts a time.Time into a 7-byte field according
+// to Table 9 – Recording Date and Time. It returns an error if the year is out of range.
+// Note: All fields are stored as numerical values (not ASCII digits).
+// Note: This type format is used in DirectoryRecords
+func MarshalRecordingDateTime(t time.Time) ([7]byte, error) {
+	var b [7]byte
+
+	year, month, day := t.Date()
+	hour, minute, second := t.Clock()
+
+	// The field stores the number of years since 1900, so valid years are 1900–2155.
+	if year < 1900 || year > 2155 {
+		return b, fmt.Errorf("year %d out of range for Recording Date and Time (must be between 1900 and 2155)", year)
+	}
+	b[0] = byte(year - 1900)
+	b[1] = byte(month) // month is 1-12
+	b[2] = byte(day)
+	b[3] = byte(hour)
+	b[4] = byte(minute)
+	b[5] = byte(second)
+
+	// Get the time zone offset in seconds and convert to 15-minute intervals.
+	_, offsetSec := t.Zone()
+	offset15 := int8(offsetSec / (15 * 60))
+	if offset15 < -48 || offset15 > 52 {
+		return b, fmt.Errorf("time zone offset %d (in 15-minute intervals: %d) is out of allowed range", offsetSec, offset15)
+	}
+	// Store offset as a signed numerical value.
+	b[6] = byte(offset15)
+	return b, nil
+}
+
+// UnmarshalRecordingDateTime converts a 7-byte Recording Date and Time field into a time.Time.
+// The fields are interpreted as follows:
+//
+//	Byte 1: years since 1900,
+//	Byte 2: month (1-12),
+//	Byte 3: day,
+//	Byte 4: hour,
+//	Byte 5: minute,
+//	Byte 6: second,
+//	Byte 7: offset from GMT in 15-minute intervals (as a signed value).
+//
+// If all seven bytes are zero, it indicates that the date/time are not specified.
+// Note: This type format is used in DirectoryRecords
+func UnmarshalRecordingDateTime(b [7]byte) (time.Time, error) {
+	// If all fields are zero, return the zero time.
+	allZero := true
+	for _, v := range b {
+		if v != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return time.Time{}, nil
+	}
+
+	year := int(b[0]) + 1900
+	month := time.Month(b[1])
+	day := int(b[2])
+	hour := int(b[3])
+	minute := int(b[4])
+	second := int(b[5])
+	// b[6] is stored as a byte but represents a signed 8-bit integer.
+	offset15 := int8(b[6])
+	offsetSec := int(offset15) * 15 * 60
+
+	loc := time.FixedZone("ISO9660", offsetSec)
+	return time.Date(year, month, day, hour, minute, second, 0, loc), nil
 }

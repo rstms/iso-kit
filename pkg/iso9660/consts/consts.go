@@ -13,6 +13,9 @@ const (
 	// ISO9660 default sector size.
 	ISO9660_SECTOR_SIZE = 2048
 
+	// ISO9660 volume descriptor header size
+	ISO9660_VOLUME_DESC_HEADER_SIZE = 7
+
 	// ISO9660 application use area size
 	ISO9660_APPLICATION_USE_SIZE = 512
 

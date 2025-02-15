@@ -2,9 +2,8 @@ package validation
 
 import (
 	"fmt"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"strings"
-
-	"github.com/bgrewell/iso-kit/pkg/consts"
 )
 
 // validateByAllowedChars is a generic helper function that checks if every character in s
