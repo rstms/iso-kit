@@ -80,9 +80,9 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 
 	var directoryRecords []*directory.DirectoryRecord
 	if openOptions.PreferEnhancedVolumes && len(svds) > 0 {
-		directoryRecords, err = p.ParseDirectoryRecords(svds[0].RootDirectoryRecord)
+		directoryRecords, err = p.WalkDirectoryRecords(svds[0].RootDirectoryRecord)
 	} else {
-		directoryRecords, err = p.ParseDirectoryRecords(pvd.RootDirectoryRecord)
+		directoryRecords, err = p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
 	}
 
 	iso := &ISO9660{

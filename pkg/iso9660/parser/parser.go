@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
@@ -155,55 +157,93 @@ func (p *Parser) ReadSupplementaryVolumeDescriptors() ([]*descriptor.Supplementa
 	}
 }
 
-// ParseDirectoryRecords performs a breadth-first search of the directory hierarchy starting from the root directory entry.
-// It uses the io.ReaderAt in the parser to read directory extents and returns a slice containing all encountered DirectoryRecords.
-func (p *Parser) ParseDirectoryRecords(root *directory.DirectoryRecord) ([]*directory.DirectoryRecord, error) {
-	var result []*directory.DirectoryRecord
-	queue := []*directory.DirectoryRecord{root}
-
-	for len(queue) > 0 {
-		// Dequeue the first record.
-		current := queue[0]
-		queue = queue[1:]
-		result = append(result, current)
-
-		// Only process children if this entry is a directory.
-		if !current.IsDirectory() {
-			continue
-		}
-
-		// Read the entire directory extent.
-		extentSize := int(current.DataLength)
-		data := make([]byte, extentSize)
-		offset := int64(current.LocationOfExtent) * consts.ISO9660_SECTOR_SIZE
-		n, err := p.r.ReadAt(data, offset)
-		if err != nil && err != io.EOF {
-			return nil, fmt.Errorf("failed to read directory extent at offset %d: %w", offset, err)
-		}
-		if n < extentSize {
-			data = data[:n]
-		}
-
-		record := &directory.DirectoryRecord{}
-		err = record.Unmarshal(data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal directory record: %w", err)
-		}
-
-		// Parse the directory records from the extent.
-		children, err := p.ParseDirectoryRecords(record)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse directory records: %w", err)
-		}
-
-		// Enqueue the children, optionally skipping special entries like '.' and '..'
-		for _, child := range children {
-			if child.IsSpecial() {
-				continue
-			}
-			queue = append(queue, child)
-		}
+// WalkDirectoryRecords recursively walks the directory tree from a given directory record
+// and returns a slice of fully populated DirectoryRecord pointers.
+func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*directory.DirectoryRecord, error) {
+	if rootDir == nil {
+		return nil, errors.New("rootDir cannot be nil")
 	}
 
-	return result, nil
+	visited := make(map[uint32]bool) // Prevent infinite recursion
+	var records []*directory.DirectoryRecord
+
+	var walk func(dir *directory.DirectoryRecord) error
+	walk = func(dir *directory.DirectoryRecord) error {
+		// Prevent revisiting the same directory
+		if visited[dir.LocationOfExtent] {
+			return nil
+		}
+		visited[dir.LocationOfExtent] = true
+
+		// Read directory records from this LBA
+		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent)
+		if err != nil {
+			return err
+		}
+
+		for _, record := range dirRecords {
+			records = append(records, record)
+
+			// If the record is a directory (excluding `.` and `..` entries), recurse
+			if record.IsDirectory() && !record.IsSpecial() {
+				if err := walk(record); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	// Start walking from the provided root directory record
+	if err := walk(rootDir); err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
+// ReadDirectoryRecords reads directory records from a given LBA (logical block address).
+func (p *Parser) ReadDirectoryRecords(lba uint32) ([]*directory.DirectoryRecord, error) {
+	// Read a full 2048-byte sector from the given LBA
+	offset := int64(lba) * consts.ISO9660_SECTOR_SIZE
+	buf := make([]byte, consts.ISO9660_SECTOR_SIZE)
+
+	_, err := p.r.ReadAt(buf, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory sector at LBA %d: %w", lba, err)
+	}
+
+	var records []*directory.DirectoryRecord
+	reader := bytes.NewReader(buf)
+
+	for reader.Len() > 0 {
+		// Read length of this directory record (first byte)
+		var length byte
+		if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
+			return nil, fmt.Errorf("failed to read directory record length: %w", err)
+		}
+
+		// If length is zero, we've reached padding or the end of records.
+		if length == 0 {
+			break
+		}
+
+		// Read the record data into a buffer
+		recordBuf := make([]byte, length)
+		recordBuf[0] = length // First byte is already read
+		if _, err := io.ReadFull(reader, recordBuf[1:]); err != nil {
+			return nil, fmt.Errorf("failed to read directory record: %w", err)
+		}
+
+		// Parse directory record from raw data
+		dr := directory.DirectoryRecord{}
+		err = dr.Unmarshal(recordBuf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse directory record: %w", err)
+		}
+
+		records = append(records, &dr)
+	}
+
+	return records, nil
 }
