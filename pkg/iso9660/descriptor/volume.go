@@ -2,7 +2,7 @@ package descriptor
 
 import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
-	"io"
+	"time"
 )
 
 // VolumeDescriptorType represents the type of volume descriptor in the ISO9660 standard.
@@ -29,6 +29,21 @@ type VolumeDescriptor interface {
 	Type() VolumeDescriptorType
 	Identifier() string
 	Version() uint8
+	VolumeIdentifier() string
+	SystemIdentifier() string
+	VolumeSetIdentifier() string
+	PublisherIdentifier() string
+	DataPreparerIdentifier() string
+	ApplicationIdentifier() string
+	CopyrightFileIdentifier() string
+	AbstractFileIdentifier() string
+	BibliographicFileIdentifier() string
+	VolumeCreationDateTime() time.Time
+	VolumeModificationDateTime() time.Time
+	VolumeExpirationDateTime() time.Time
+	VolumeEffectiveDateTime() time.Time
+	HasJoliet() bool
+	HasRockRidge() bool
 	Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error)
-	Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte, isoFile io.ReaderAt) error
+	Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) error
 }

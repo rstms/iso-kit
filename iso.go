@@ -2,27 +2,43 @@ package iso
 
 import (
 	"errors"
-	"github.com/bgrewell/iso-kit/pkg/file"
+	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660"
 	"github.com/bgrewell/iso-kit/pkg/option"
 	"github.com/bgrewell/iso-kit/pkg/udf"
 	"io"
 	"os"
+	"time"
 )
 
 // ISO represents a generic ISO filesystem with read/write capabilities.
 type ISO interface {
 	GetVolumeID() string
 	GetSystemID() string
+	GetVolumeSetID() string
+	GetPublisherID() string
+	GetDataPreparerID() string
+	GetApplicationID() string
+	GetCopyrightID() string
+	GetAbstractID() string
+	GetBibliographicID() string
+	GetCreationDateTime() time.Time
+	GetModificationDateTime() time.Time
+	GetExpirationDateTime() time.Time
+	GetEffectiveDateTime() time.Time
+
 	GetVolumeSize() uint32
 
-	ListFiles() ([]file.FileEntry, error)
+	ListFiles() ([]filesystem.FileSystemEntry, error)
 	ReadFile(path string) ([]byte, error)
 
 	AddFile(path string, data []byte) error
 	RemoveFile(path string) error
-	Save(writer io.Writer) error
 
+	HasJoliet() bool
+	HasRockRidge() bool
+
+	Save(writer io.Writer) error
 	Close() error
 }
 

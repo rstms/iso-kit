@@ -22,8 +22,9 @@ type OpenOptions struct {
 	ParseOnOpen                bool
 	ReadOnly                   bool
 	PreloadDir                 bool
-	PreferEnhancedVolumes      bool
+	PreferJoliet               bool
 	StripVersionInfo           bool
+	RockRidgeEnabled           bool
 	BootFileExtractLocation    string
 	ExtractionProgressCallback ExtractionProgressCallback
 	Logger                     logr.Logger
@@ -80,9 +81,15 @@ func WithStripVersionInfo(stripVersionInfo bool) OpenOption {
 	}
 }
 
-func WithPreferEnhancedVolumes(preferEnhancedVolumes bool) OpenOption {
+func WithPreferJoliet(preferJoliet bool) OpenOption {
 	return func(o *OpenOptions) {
-		o.PreferEnhancedVolumes = preferEnhancedVolumes
+		o.PreferJoliet = preferJoliet
+	}
+}
+
+func WithRockRidgeEnabled(rockRidgeEnabled bool) OpenOption {
+	return func(o *OpenOptions) {
+		o.RockRidgeEnabled = rockRidgeEnabled
 	}
 }
 

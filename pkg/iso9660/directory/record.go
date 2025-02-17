@@ -3,6 +3,8 @@ package directory
 import (
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/extensions"
+	"os"
 	"time"
 )
 
@@ -75,14 +77,61 @@ type DirectoryRecord struct {
 	// arrays by value.
 	// This field shall be at BP (LEN_DR - LEN_SU + 1) to LEN_DR
 	SystemUse []byte `json:"system_use"`
+	// RockRidge is a field to store Rock Ridge extensions if they exist
+	RockRidge *extensions.RockRidgeExtensions `json:"rock_ridge"`
 }
 
+// IsDirectory checks if the entry is a Directory
 func (dr *DirectoryRecord) IsDirectory() bool {
 	return dr.FileFlags.Directory
 }
 
+// IsSpecial checks for "." or ".."
 func (dr *DirectoryRecord) IsSpecial() bool {
 	return dr.FileIdentifier == "\x00" || dr.FileIdentifier == "\x01"
+}
+
+// GetBestName retrieves the best file name
+func (dr *DirectoryRecord) GetBestName(RockRidgeEnabled bool) string {
+	if RockRidgeEnabled && dr.RockRidge != nil && dr.RockRidge.AlternateName != nil {
+		return *dr.RockRidge.AlternateName
+	}
+	return dr.FileIdentifier // Default to ISO 9660 name
+}
+
+// GetPermissions retrieves file permissions
+func (dr *DirectoryRecord) GetPermissions(RockRidgeEnabled bool) os.FileMode {
+	if RockRidgeEnabled && dr.RockRidge != nil && dr.RockRidge.Permissions != nil {
+		return os.FileMode(*dr.RockRidge.Permissions)
+	}
+	if dr.IsDirectory() {
+		return os.FileMode(0o755) // Default for directories
+	}
+	return os.FileMode(0o644) // Default for files
+}
+
+// GetOwnership retrieves UID & GID
+func (dr *DirectoryRecord) GetOwnership(RockRidgeEnabled bool) (uid, gid *uint32) {
+	if RockRidgeEnabled && dr.RockRidge != nil {
+		return dr.RockRidge.UID, dr.RockRidge.GID
+	}
+	return nil, nil
+}
+
+// GetTimestamps retrieves creation & modification time
+func (dr *DirectoryRecord) GetTimestamps(RockRidgeEnabled bool) (creation, modification time.Time) {
+	if RockRidgeEnabled && dr.RockRidge != nil {
+		if dr.RockRidge.CreationTime != nil {
+			creation = *dr.RockRidge.CreationTime
+		}
+		if dr.RockRidge.ModificationTime != nil {
+			modification = *dr.RockRidge.ModificationTime
+		}
+	} else {
+		creation = dr.RecordingDateAndTime
+		modification = dr.RecordingDateAndTime
+	}
+	return creation, modification
 }
 
 // Marshal converts the DirectoryRecord into its on‑disk byte representation.
@@ -182,7 +231,7 @@ func (dr *DirectoryRecord) Unmarshal(data []byte) error {
 	}
 	var locBytes [8]byte
 	copy(locBytes[:], data[offset:offset+8])
-	loc, err := encoding.UnmarshalBothByteOrders32(locBytes)
+	loc, err := encoding.UnmarshalUint32LSBMSB(locBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal Location Of Extent: %w", err)
 	}
@@ -195,7 +244,7 @@ func (dr *DirectoryRecord) Unmarshal(data []byte) error {
 	}
 	var dataLenBytes [8]byte
 	copy(dataLenBytes[:], data[offset:offset+8])
-	dataLen, err := encoding.UnmarshalBothByteOrders32(dataLenBytes)
+	dataLen, err := encoding.UnmarshalUint32LSBMSB(dataLenBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal Data Length: %w", err)
 	}
@@ -246,7 +295,7 @@ func (dr *DirectoryRecord) Unmarshal(data []byte) error {
 	}
 	var volSeqBytes [4]byte
 	copy(volSeqBytes[:], data[offset:offset+4])
-	volSeq, err := encoding.UnmarshalBothByteOrders16(volSeqBytes)
+	volSeq, err := encoding.UnmarshalUint16LSBMSB(volSeqBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal Volume Sequence Number: %w", err)
 	}

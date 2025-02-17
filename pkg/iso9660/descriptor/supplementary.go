@@ -19,6 +19,67 @@ type SupplementaryVolumeDescriptor struct {
 	SupplementaryVolumeDescriptorBody
 }
 
+func (d *SupplementaryVolumeDescriptor) VolumeIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.VolumeIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) SystemIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.SystemIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) VolumeSetIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.VolumeSetIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) PublisherIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.PublisherIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) DataPreparerIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.DataPreparerIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) ApplicationIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.ApplicationIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) CopyrightFileIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.CopyrightFileIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) AbstractFileIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.AbstractFileIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) BibliographicFileIdentifier() string {
+	return d.SupplementaryVolumeDescriptorBody.BibliographicFileIdentifier
+}
+
+func (d *SupplementaryVolumeDescriptor) VolumeCreationDateTime() time.Time {
+	return d.SupplementaryVolumeDescriptorBody.VolumeCreationDateAndTime
+}
+
+func (d *SupplementaryVolumeDescriptor) VolumeModificationDateTime() time.Time {
+	return d.SupplementaryVolumeDescriptorBody.VolumeModificationDateAndTime
+}
+
+func (d *SupplementaryVolumeDescriptor) VolumeExpirationDateTime() time.Time {
+	return d.SupplementaryVolumeDescriptorBody.VolumeExpirationDateAndTime
+}
+
+func (d *SupplementaryVolumeDescriptor) VolumeEffectiveDateTime() time.Time {
+	return d.SupplementaryVolumeDescriptorBody.VolumeEffectiveDateAndTime
+}
+
+func (d *SupplementaryVolumeDescriptor) HasJoliet() bool {
+	// TODO: Should actually detect the Escape Sequences field to determine if Joliet is present.
+	return true
+}
+
+func (d *SupplementaryVolumeDescriptor) HasRockRidge() bool {
+	return false
+}
+
 // Marshal converts the entire SupplementaryVolumeDescriptor into a 2048-byte on-disk sector.
 func (d *SupplementaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {
 	var sector [consts.ISO9660_SECTOR_SIZE]byte
@@ -212,21 +273,21 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	data[offset] = svdb.VolumeFlags
 	offset++
 
-	// 2. SystemIdentifier: 32 bytes.
+	// 2. systemIdentifier: 32 bytes.
 	sysID := helpers.PadString(svdb.SystemIdentifier, 32)
 	copy(data[offset:offset+32], sysID)
 	offset += 32
 
-	// 3. VolumeIdentifier: 32 bytes.
+	// 3. volumeIdentifier: 32 bytes.
 	volID := helpers.PadString(svdb.VolumeIdentifier, 32)
 	copy(data[offset:offset+32], volID)
 	offset += 32
 
-	// 4. UnusedField1: 8 bytes.
+	// 4. unusedField1: 8 bytes.
 	copy(data[offset:offset+8], svdb.UnusedField1[:])
 	offset += 8
 
-	// 5. VolumeSpaceSize: 8 bytes.
+	// 5. volumeSpaceSize: 8 bytes.
 	copy(data[offset:offset+8], svdb.VolumeSpaceSize[:])
 	offset += 8
 
@@ -234,133 +295,133 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	copy(data[offset:offset+32], svdb.EscapeSequences[:])
 	offset += 32
 
-	// 7. VolumeSetSize: 4 bytes
+	// 7. volumeSetSize: 4 bytes
 	copy(data[offset:offset+4], svdb.VolumeSetSize[:])
 	offset += 4
 
-	// 8. VolumeSequenceNumber: 4 bytes
+	// 8. volumeSequenceNumber: 4 bytes
 	copy(data[offset:offset+4], svdb.VolumeSequenceNumber[:])
 	offset += 4
 
-	// 9. LogicalBlockSize: 4 bytes
+	// 9. logicalBlockSize: 4 bytes
 	copy(data[offset:offset+4], svdb.LogicalBlockSize[:])
 	offset += 4
 
-	// 10. PathTableSize: 8 bytes (both-byte orders for uint32).
+	// 10. pathTableSize: 8 bytes (both-byte orders for uint32).
 	ptsBytes := encoding.MarshalBothByteOrders32(svdb.PathTableSize)
 	copy(data[offset:offset+8], ptsBytes[:])
 	offset += 8
 
-	// 11. LocationOfTypeLPathTable: 4 bytes, little-endian.
+	// 11. locationOfTypeLPathTable: 4 bytes, little-endian.
 	binary.LittleEndian.PutUint32(data[offset:offset+4], svdb.LocationOfTypeLPathTable)
 	offset += 4
 
-	// 12. LocationOfOptionalTypeLPathTable: 4 bytes, little-endian.
+	// 12. locationOfOptionalTypeLPathTable: 4 bytes, little-endian.
 	binary.LittleEndian.PutUint32(data[offset:offset+4], svdb.LocationOfOptionalTypeLPathTable)
 	offset += 4
 
-	// 13. LocationOfTypeMPathTable: 4 bytes, big-endian.
+	// 13. locationOfTypeMPathTable: 4 bytes, big-endian.
 	binary.BigEndian.PutUint32(data[offset:offset+4], svdb.LocationOfTypeMPathTable)
 	offset += 4
 
-	// 14. LocationOfOptionalTypeMPathTable: 4 bytes, big-endian.
+	// 14. locationOfOptionalTypeMPathTable: 4 bytes, big-endian.
 	binary.BigEndian.PutUint32(data[offset:offset+4], svdb.LocationOfOptionalTypeMPathTable)
 	offset += 4
 
-	// 15. RootDirectoryRecord: 34 bytes.
+	// 15. rootDirectoryRecord: 34 bytes.
 	if svdb.RootDirectoryRecord == nil {
-		return data, fmt.Errorf("RootDirectoryRecord is nil")
+		return data, fmt.Errorf("rootDirectoryRecord is nil")
 	}
 	rdBytes, err := svdb.RootDirectoryRecord.Marshal()
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal RootDirectoryRecord: %w", err)
+		return data, fmt.Errorf("failed to marshal rootDirectoryRecord: %w", err)
 	}
 	if len(rdBytes) != 34 {
-		return data, fmt.Errorf("expected 34 bytes for RootDirectoryRecord, got %d", len(rdBytes))
+		return data, fmt.Errorf("expected 34 bytes for rootDirectoryRecord, got %d", len(rdBytes))
 	}
 	copy(data[offset:offset+34], rdBytes)
 	offset += 34
 
-	// 16. VolumeSetIdentifier: 128 bytes.
+	// 16. volumeSetIdentifier: 128 bytes.
 	vsi := helpers.PadString(svdb.VolumeSetIdentifier, 128)
 	copy(data[offset:offset+128], vsi)
 	offset += 128
 
-	// 17. PublisherIdentifier: 128 bytes.
+	// 17. publisherIdentifier: 128 bytes.
 	pubID := helpers.PadString(svdb.PublisherIdentifier, 128)
 	copy(data[offset:offset+128], pubID)
 	offset += 128
 
-	// 18. DataPreparerIdentifier: 128 bytes.
+	// 18. dataPreparerIdentifier: 128 bytes.
 	dpID := helpers.PadString(svdb.DataPreparerIdentifier, 128)
 	copy(data[offset:offset+128], dpID)
 	offset += 128
 
-	// 19. ApplicationIdentifier: 128 bytes.
+	// 19. applicationIdentifier: 128 bytes.
 	appID := helpers.PadString(svdb.ApplicationIdentifier, 128)
 	copy(data[offset:offset+128], appID)
 	offset += 128
 
-	// 20. CopyrightFileIdentifier: 37 bytes.
+	// 20. copyrightFileIdentifier: 37 bytes.
 	cfID := helpers.PadString(svdb.CopyrightFileIdentifier, 37)
 	copy(data[offset:offset+37], cfID)
 	offset += 37
 
-	// 21. AbstractFileIdentifier: 37 bytes.
+	// 21. abstractFileIdentifier: 37 bytes.
 	afID := helpers.PadString(svdb.AbstractFileIdentifier, 37)
 	copy(data[offset:offset+37], afID)
 	offset += 37
 
-	// 22. BibliographicFileIdentifier: 37 bytes.
+	// 22. bibliographicFileIdentifier: 37 bytes.
 	bfID := helpers.PadString(svdb.BibliographicFileIdentifier, 37)
 	copy(data[offset:offset+37], bfID)
 	offset += 37
 
-	// 23. VolumeCreationDateAndTime: 17 bytes.
+	// 23. volumeCreationDateAndTime: 17 bytes.
 	vcdBytes, err := encoding.MarshalDateTime(svdb.VolumeCreationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeCreationDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeCreationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vcdBytes[:])
 	offset += 17
 
-	// 24. VolumeModificationDateAndTime: 17 bytes.
+	// 24. volumeModificationDateAndTime: 17 bytes.
 	vmdBytes, err := encoding.MarshalDateTime(svdb.VolumeModificationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeModificationDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeModificationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vmdBytes[:])
 	offset += 17
 
-	// 25. VolumeExpirationDateAndTime: 17 bytes.
+	// 25. volumeExpirationDateAndTime: 17 bytes.
 	vedBytes, err := encoding.MarshalDateTime(svdb.VolumeExpirationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeExpirationDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeExpirationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vedBytes[:])
 	offset += 17
 
-	// 26. VolumeEffectiveDateAndTime: 17 bytes.
+	// 26. volumeEffectiveDateAndTime: 17 bytes.
 	vefBytes, err := encoding.MarshalDateTime(svdb.VolumeEffectiveDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeEffectiveDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeEffectiveDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vefBytes[:])
 	offset += 17
 
-	// 27. FileStructureVersion: 1 byte.
+	// 27. fileStructureVersion: 1 byte.
 	data[offset] = svdb.FileStructureVersion
 	offset++
 
-	// 28. ReservedField1: 1 byte.
+	// 28. reservedField1: 1 byte.
 	data[offset] = svdb.ReservedField1
 	offset++
 
-	// 29. ApplicationUse: fixed size.
+	// 29. applicationUse: fixed size.
 	copy(data[offset:offset+len(svdb.ApplicationUse)], svdb.ApplicationUse[:])
 	offset += len(svdb.ApplicationUse)
 
-	// 30. ReservedField2: 653 bytes.
+	// 30. reservedField2: 653 bytes.
 	copy(data[offset:offset+len(svdb.ReservedField2)], svdb.ReservedField2[:])
 	offset += len(svdb.ReservedField2)
 
@@ -383,19 +444,19 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	svdb.VolumeFlags = data[offset]
 	offset++
 
-	// 2. SystemIdentifier: 32 bytes.
+	// 2. systemIdentifier: 32 bytes.
 	svdb.SystemIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	offset += 32
 
-	// 3. VolumeIdentifier: 32 bytes.
+	// 3. volumeIdentifier: 32 bytes.
 	svdb.VolumeIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	offset += 32
 
-	// 4. UnusedField1: 8 bytes.
+	// 4. unusedField1: 8 bytes.
 	copy(svdb.UnusedField1[:], data[offset:offset+8])
 	offset += 8
 
-	// 5. VolumeSpaceSize: 8 bytes.
+	// 5. volumeSpaceSize: 8 bytes.
 	copy(svdb.VolumeSpaceSize[:], data[offset:offset+8])
 	offset += 8
 
@@ -403,134 +464,134 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	copy(svdb.EscapeSequences[:], data[offset:offset+32])
 	offset += 32
 
-	// 7. VolumeSetSize: 4 bytes.
+	// 7. volumeSetSize: 4 bytes.
 	copy(svdb.VolumeSetSize[:], data[offset:offset+4])
 	offset += 4
 
-	// 8. VolumeSequenceNumber: 4 bytes.
+	// 8. volumeSequenceNumber: 4 bytes.
 	copy(svdb.VolumeSequenceNumber[:], data[offset:offset+4])
 	offset += 4
 
-	// 9. LogicalBlockSize: 4 bytes.
+	// 9. logicalBlockSize: 4 bytes.
 	copy(svdb.LogicalBlockSize[:], data[offset:offset+4])
 	offset += 4
 
-	// 10. PathTableSize: 8 bytes (both-byte orders for uint32; use little-endian value).
+	// 10. pathTableSize: 8 bytes (both-byte orders for uint32; use little-endian value).
 	var ptsBytes [8]byte
 	copy(ptsBytes[:], data[offset:offset+8])
-	pathTableSize, err := encoding.UnmarshalBothByteOrders32(ptsBytes)
+	pathTableSize, err := encoding.UnmarshalUint32LSBMSB(ptsBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal PathTableSize: %w", err)
+		return fmt.Errorf("failed to unmarshal pathTableSize: %w", err)
 	}
 	svdb.PathTableSize = pathTableSize
 	offset += 8
 
-	// 11. LocationOfTypeLPathTable: 4 bytes, little-endian.
+	// 11. locationOfTypeLPathTable: 4 bytes, little-endian.
 	svdb.LocationOfTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 12. LocationOfOptionalTypeLPathTable: 4 bytes, little-endian.
+	// 12. locationOfOptionalTypeLPathTable: 4 bytes, little-endian.
 	svdb.LocationOfOptionalTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 13. LocationOfTypeMPathTable: 4 bytes, big-endian.
+	// 13. locationOfTypeMPathTable: 4 bytes, big-endian.
 	svdb.LocationOfTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 14. LocationOfOptionalTypeMPathTable: 4 bytes, big-endian.
+	// 14. locationOfOptionalTypeMPathTable: 4 bytes, big-endian.
 	svdb.LocationOfOptionalTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 15. RootDirectoryRecord: 34 bytes.
+	// 15. rootDirectoryRecord: 34 bytes.
 	if svdb.RootDirectoryRecord == nil {
 		svdb.RootDirectoryRecord = new(directory.DirectoryRecord)
 	}
 	if err := svdb.RootDirectoryRecord.Unmarshal(data[offset : offset+34]); err != nil {
-		return fmt.Errorf("failed to unmarshal RootDirectoryRecord: %w", err)
+		return fmt.Errorf("failed to unmarshal rootDirectoryRecord: %w", err)
 	}
 	offset += 34
 
-	// 16. VolumeSetIdentifier: 128 bytes.
+	// 16. volumeSetIdentifier: 128 bytes.
 	svdb.VolumeSetIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 17. PublisherIdentifier: 128 bytes.
+	// 17. publisherIdentifier: 128 bytes.
 	svdb.PublisherIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 18. DataPreparerIdentifier: 128 bytes.
+	// 18. dataPreparerIdentifier: 128 bytes.
 	svdb.DataPreparerIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 19. ApplicationIdentifier: 128 bytes.
+	// 19. applicationIdentifier: 128 bytes.
 	svdb.ApplicationIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 20. CopyrightFileIdentifier: 37 bytes.
+	// 20. copyrightFileIdentifier: 37 bytes.
 	svdb.CopyrightFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 21. AbstractFileIdentifier: 37 bytes.
+	// 21. abstractFileIdentifier: 37 bytes.
 	svdb.AbstractFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 22. BibliographicFileIdentifier: 37 bytes.
+	// 22. bibliographicFileIdentifier: 37 bytes.
 	svdb.BibliographicFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 23. VolumeCreationDateAndTime: 17 bytes.
+	// 23. volumeCreationDateAndTime: 17 bytes.
 	var vcdBytes [17]byte
 	copy(vcdBytes[:], data[offset:offset+17])
 	volCreation, err := encoding.UnmarshalDateTime(vcdBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeCreationDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeCreationDateAndTime: %w", err)
 	}
 	svdb.VolumeCreationDateAndTime = volCreation
 	offset += 17
 
-	// 24. VolumeModificationDateAndTime: 17 bytes.
+	// 24. volumeModificationDateAndTime: 17 bytes.
 	var vmdBytes [17]byte
 	copy(vmdBytes[:], data[offset:offset+17])
 	volMod, err := encoding.UnmarshalDateTime(vmdBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeModificationDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeModificationDateAndTime: %w", err)
 	}
 	svdb.VolumeModificationDateAndTime = volMod
 	offset += 17
 
-	// 25. VolumeExpirationDateAndTime: 17 bytes.
+	// 25. volumeExpirationDateAndTime: 17 bytes.
 	var vedBytes [17]byte
 	copy(vedBytes[:], data[offset:offset+17])
 	volExp, err := encoding.UnmarshalDateTime(vedBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeExpirationDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeExpirationDateAndTime: %w", err)
 	}
 	svdb.VolumeExpirationDateAndTime = volExp
 	offset += 17
 
-	// 26. VolumeEffectiveDateAndTime: 17 bytes.
+	// 26. volumeEffectiveDateAndTime: 17 bytes.
 	var vefBytes [17]byte
 	copy(vefBytes[:], data[offset:offset+17])
 	volEff, err := encoding.UnmarshalDateTime(vefBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeEffectiveDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeEffectiveDateAndTime: %w", err)
 	}
 	svdb.VolumeEffectiveDateAndTime = volEff
 	offset += 17
 
-	// 27. FileStructureVersion: 1 byte.
+	// 27. fileStructureVersion: 1 byte.
 	svdb.FileStructureVersion = data[offset]
 	offset++
 
-	// 28. ReservedField1: 1 byte.
+	// 28. reservedField1: 1 byte.
 	svdb.ReservedField1 = data[offset]
 	offset++
 
-	// 29. ApplicationUse: fixed size.
+	// 29. applicationUse: fixed size.
 	copy(svdb.ApplicationUse[:], data[offset:offset+len(svdb.ApplicationUse)])
 	offset += len(svdb.ApplicationUse)
 
-	// 30. ReservedField2: 653 bytes.
+	// 30. reservedField2: 653 bytes.
 	copy(svdb.ReservedField2[:], data[offset:offset+len(svdb.ReservedField2)])
 	offset += len(svdb.ReservedField2)
 

@@ -176,7 +176,7 @@ func (ear *ExtendedAttributeRecord) Marshal() ([]byte, error) {
 	recLenBytes := encoding.MarshalBothByteOrders16(ear.RecordLength)
 	buf = append(buf, recLenBytes[:]...)
 
-	// 11. SystemIdentifier: fixed 32 bytes (pad/truncate)
+	// 11. systemIdentifier: fixed 32 bytes (pad/truncate)
 	sysIDBytes := helpers.PadString(ear.SystemIdentifier, 32)
 	buf = append(buf, sysIDBytes...)
 
@@ -196,7 +196,7 @@ func (ear *ExtendedAttributeRecord) Marshal() ([]byte, error) {
 	appUseLenBytes := encoding.MarshalBothByteOrders16(ear.LengthOfApplicationUse)
 	buf = append(buf, appUseLenBytes[:]...)
 
-	// 17. ApplicationUse (variable length, must match LengthOfApplicationUse)
+	// 17. applicationUse (variable length, must match LengthOfApplicationUse)
 	if len(ear.ApplicationUse) != int(ear.LengthOfApplicationUse) {
 		return nil, fmt.Errorf("application use length mismatch: expected %d, got %d", ear.LengthOfApplicationUse, len(ear.ApplicationUse))
 	}
@@ -223,7 +223,7 @@ func (ear *ExtendedAttributeRecord) Unmarshal(data []byte) error {
 	}
 	var ownerBytes [4]byte
 	copy(ownerBytes[:], data[offset:offset+4])
-	ownerID, err := encoding.UnmarshalBothByteOrders16(ownerBytes)
+	ownerID, err := encoding.UnmarshalUint16LSBMSB(ownerBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal OwnerIdentification: %w", err)
 	}
@@ -236,7 +236,7 @@ func (ear *ExtendedAttributeRecord) Unmarshal(data []byte) error {
 	}
 	var groupBytes [4]byte
 	copy(groupBytes[:], data[offset:offset+4])
-	groupID, err := encoding.UnmarshalBothByteOrders16(groupBytes)
+	groupID, err := encoding.UnmarshalUint16LSBMSB(groupBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal GroupIdentification: %w", err)
 	}
@@ -327,16 +327,16 @@ func (ear *ExtendedAttributeRecord) Unmarshal(data []byte) error {
 	}
 	var recLenBytes [4]byte
 	copy(recLenBytes[:], data[offset:offset+4])
-	recLen, err := encoding.UnmarshalBothByteOrders16(recLenBytes)
+	recLen, err := encoding.UnmarshalUint16LSBMSB(recLenBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal RecordLength: %w", err)
 	}
 	ear.RecordLength = recLen
 	offset += 4
 
-	// 11. SystemIdentifier: fixed 32 bytes.
+	// 11. systemIdentifier: fixed 32 bytes.
 	if offset+32 > len(data) {
-		return fmt.Errorf("insufficient data for SystemIdentifier")
+		return fmt.Errorf("insufficient data for systemIdentifier")
 	}
 	ear.SystemIdentifier = string(data[offset : offset+32])
 	offset += 32
@@ -375,16 +375,16 @@ func (ear *ExtendedAttributeRecord) Unmarshal(data []byte) error {
 	}
 	var appUseLenBytes [4]byte
 	copy(appUseLenBytes[:], data[offset:offset+4])
-	appUseLen, err := encoding.UnmarshalBothByteOrders16(appUseLenBytes)
+	appUseLen, err := encoding.UnmarshalUint16LSBMSB(appUseLenBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal LengthOfApplicationUse: %w", err)
 	}
 	ear.LengthOfApplicationUse = appUseLen
 	offset += 4
 
-	// 17. ApplicationUse (variable length)
+	// 17. applicationUse (variable length)
 	if offset+int(ear.LengthOfApplicationUse) > len(data) {
-		return fmt.Errorf("insufficient data for ApplicationUse: need %d, have %d", ear.LengthOfApplicationUse, len(data)-offset)
+		return fmt.Errorf("insufficient data for applicationUse: need %d, have %d", ear.LengthOfApplicationUse, len(data)-offset)
 	}
 	ear.ApplicationUse = make([]byte, ear.LengthOfApplicationUse)
 	copy(ear.ApplicationUse, data[offset:offset+int(ear.LengthOfApplicationUse)])

@@ -19,10 +19,10 @@ func MarshalBothByteOrders32(val uint32) [8]byte {
 	return data
 }
 
-// UnmarshalBothByteOrders32 converts an 8-byte field encoded in both little‑
+// UnmarshalUint32LSBMSB converts an 8-byte field encoded in both little‑
 // and big‑endian orders back to a uint32 value. It verifies that both halves
 // are equal. If they are not, it returns an error.
-func UnmarshalBothByteOrders32(data [8]byte) (uint32, error) {
+func UnmarshalUint32LSBMSB(data [8]byte) (uint32, error) {
 	// Decode little-endian value from the first four bytes.
 	little := binary.LittleEndian.Uint32(data[0:4])
 	// Decode big-endian value from the last four bytes.
@@ -47,10 +47,10 @@ func MarshalBothByteOrders16(val uint16) [4]byte {
 	return data
 }
 
-// UnmarshalBothByteOrders16 converts a 4-byte field encoded in both little‑
+// UnmarshalUint16LSBMSB converts a 4-byte field encoded in both little‑
 // and big‑endian orders back to a uint16 value. It verifies that both halves
 // match; if they do not, it returns an error.
-func UnmarshalBothByteOrders16(data [4]byte) (uint16, error) {
+func UnmarshalUint16LSBMSB(data [4]byte) (uint16, error) {
 	// Read the little-endian value from the first two bytes.
 	little := binary.LittleEndian.Uint16(data[0:2])
 	// Read the big-endian value from the last two bytes.

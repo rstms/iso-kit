@@ -22,6 +22,66 @@ type PrimaryVolumeDescriptor struct {
 	PrimaryVolumeDescriptorBody
 }
 
+func (pvd *PrimaryVolumeDescriptor) VolumeIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.VolumeIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) SystemIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.SystemIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) VolumeSetIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.VolumeSetIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) PublisherIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.PublisherIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) DataPreparerIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.DataPreparerIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) ApplicationIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.ApplicationIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) CopyrightFileIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.CopyrightFileIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) AbstractFileIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.AbstractFileIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) BibliographicFileIdentifier() string {
+	return pvd.PrimaryVolumeDescriptorBody.BibliographicFileIdentifier
+}
+
+func (pvd *PrimaryVolumeDescriptor) VolumeCreationDateTime() time.Time {
+	return pvd.PrimaryVolumeDescriptorBody.VolumeCreationDateAndTime
+}
+
+func (pvd *PrimaryVolumeDescriptor) VolumeModificationDateTime() time.Time {
+	return pvd.PrimaryVolumeDescriptorBody.VolumeModificationDateAndTime
+}
+
+func (pvd *PrimaryVolumeDescriptor) VolumeExpirationDateTime() time.Time {
+	return pvd.PrimaryVolumeDescriptorBody.VolumeExpirationDateAndTime
+}
+
+func (pvd *PrimaryVolumeDescriptor) VolumeEffectiveDateTime() time.Time {
+	return pvd.PrimaryVolumeDescriptorBody.VolumeEffectiveDateAndTime
+}
+
+func (pvd *PrimaryVolumeDescriptor) HasJoliet() bool {
+	return false
+}
+
+func (pvd *PrimaryVolumeDescriptor) HasRockRidge() bool {
+	return pvd.PrimaryVolumeDescriptorBody.RootDirectoryRecord.RockRidge.HasRockRidge()
+}
+
 func (pvd *PrimaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {
 	// Marshal the VolumeDescriptorHeader and PrimaryVolumeDescriptorBody.
 	headerBytes, err := pvd.VolumeDescriptorHeader.Marshal()
@@ -41,7 +101,7 @@ func (pvd *PrimaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte,
 	return data, nil
 }
 
-func (pvd *PrimaryVolumeDescriptor) Unmarshal(data []byte) error {
+func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) error {
 	if len(data) < consts.ISO9660_SECTOR_SIZE {
 		return fmt.Errorf("data too short: expected %d bytes, got %d", consts.ISO9660_SECTOR_SIZE, len(data))
 	}
@@ -82,7 +142,7 @@ type PrimaryVolumeDescriptorBody struct {
 	VolumeSetSize uint16 `json:"volume_set_size"`
 	// Volume Sequence Number is a field that represents the ordinal number of the volume in the Volume Set.
 	//  | Encoding: BothByteOrder
-	VolumeSequenceNumber uint16 `json:"volume_sequenencoding.ce_number"`
+	VolumeSequenceNumber uint16 `json:"volume_sequence_number"`
 	// Logical Block Size specifies the size in bytes of a logical block
 	//  | Encoding: BothByteOrder
 	LogicalBlockSize uint16 `json:"logical_block_size"`
@@ -188,163 +248,163 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	var data [PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte
 	offset := 0
 
-	// 1. UnusedField1: 1 byte.
+	// 1. unusedField1: 1 byte.
 	data[offset] = pvdb.UnusedField1
 	offset++
 
-	// 2. SystemIdentifier: 32 bytes.
+	// 2. systemIdentifier: 32 bytes.
 	sysID := helpers.PadString(pvdb.SystemIdentifier, 32)
 	copy(data[offset:offset+32], sysID)
 	offset += 32
 
-	// 3. VolumeIdentifier: 32 bytes.
+	// 3. volumeIdentifier: 32 bytes.
 	volID := helpers.PadString(pvdb.VolumeIdentifier, 32)
 	copy(data[offset:offset+32], volID)
 	offset += 32
 
-	// 4. UnusedField2: 8 bytes.
+	// 4. unusedField2: 8 bytes.
 	copy(data[offset:offset+8], pvdb.UnusedField2[:])
 	offset += 8
 
-	// 5. VolumeSpaceSize: 8 bytes (both-byte orders for uint32).
+	// 5. volumeSpaceSize: 8 bytes (both-byte orders for uint32).
 	vsBytes := encoding.MarshalBothByteOrders32(pvdb.VolumeSpaceSize)
 	copy(data[offset:offset+8], vsBytes[:])
 	offset += 8
 
-	// 6. UnusedField3: 32 bytes.
+	// 6. unusedField3: 32 bytes.
 	copy(data[offset:offset+32], pvdb.UnusedField3[:])
 	offset += 32
 
-	// 7. VolumeSetSize: 4 bytes (both-byte orders for uint16).
+	// 7. volumeSetSize: 4 bytes (both-byte orders for uint16).
 	vssBytes := encoding.MarshalBothByteOrders16(pvdb.VolumeSetSize)
 	copy(data[offset:offset+4], vssBytes[:])
 	offset += 4
 
-	// 8. VolumeSequenceNumber: 4 bytes (both-byte orders for uint16).
+	// 8. volumeSequenceNumber: 4 bytes (both-byte orders for uint16).
 	vsnBytes := encoding.MarshalBothByteOrders16(pvdb.VolumeSequenceNumber)
 	copy(data[offset:offset+4], vsnBytes[:])
 	offset += 4
 
-	// 9. LogicalBlockSize: 4 bytes (both-byte orders for uint16).
+	// 9. logicalBlockSize: 4 bytes (both-byte orders for uint16).
 	lbsBytes := encoding.MarshalBothByteOrders16(pvdb.LogicalBlockSize)
 	copy(data[offset:offset+4], lbsBytes[:])
 	offset += 4
 
-	// 10. PathTableSize: 8 bytes (both-byte orders for uint32).
+	// 10. pathTableSize: 8 bytes (both-byte orders for uint32).
 	ptsBytes := encoding.MarshalBothByteOrders32(pvdb.PathTableSize)
 	copy(data[offset:offset+8], ptsBytes[:])
 	offset += 8
 
-	// 11. LocationOfTypeLPathTable: 4 bytes, little-endian.
+	// 11. locationOfTypeLPathTable: 4 bytes, little-endian.
 	binary.LittleEndian.PutUint32(data[offset:offset+4], pvdb.LocationOfTypeLPathTable)
 	offset += 4
 
-	// 12. LocationOfOptionalTypeLPathTable: 4 bytes, little-endian.
+	// 12. locationOfOptionalTypeLPathTable: 4 bytes, little-endian.
 	binary.LittleEndian.PutUint32(data[offset:offset+4], pvdb.LocationOfOptionalTypeLPathTable)
 	offset += 4
 
-	// 13. LocationOfTypeMPathTable: 4 bytes, big-endian.
+	// 13. locationOfTypeMPathTable: 4 bytes, big-endian.
 	binary.BigEndian.PutUint32(data[offset:offset+4], pvdb.LocationOfTypeMPathTable)
 	offset += 4
 
-	// 14. LocationOfOptionalTypeMPathTable: 4 bytes, big-endian.
+	// 14. locationOfOptionalTypeMPathTable: 4 bytes, big-endian.
 	binary.BigEndian.PutUint32(data[offset:offset+4], pvdb.LocationOfOptionalTypeMPathTable)
 	offset += 4
 
-	// 15. RootDirectoryRecord: 34 bytes.
+	// 15. rootDirectoryRecord: 34 bytes.
 	if pvdb.RootDirectoryRecord == nil {
-		return data, fmt.Errorf("RootDirectoryRecord is nil")
+		return data, fmt.Errorf("rootDirectoryRecord is nil")
 	}
 	rdBytes, err := pvdb.RootDirectoryRecord.Marshal()
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal RootDirectoryRecord: %w", err)
+		return data, fmt.Errorf("failed to marshal rootDirectoryRecord: %w", err)
 	}
 	if len(rdBytes) != 34 {
-		return data, fmt.Errorf("expected 34 bytes for RootDirectoryRecord, got %d", len(rdBytes))
+		return data, fmt.Errorf("expected 34 bytes for rootDirectoryRecord, got %d", len(rdBytes))
 	}
 	copy(data[offset:offset+34], rdBytes)
 	offset += 34
 
-	// 16. VolumeSetIdentifier: 128 bytes.
+	// 16. volumeSetIdentifier: 128 bytes.
 	vsi := helpers.PadString(pvdb.VolumeSetIdentifier, 128)
 	copy(data[offset:offset+128], vsi)
 	offset += 128
 
-	// 17. PublisherIdentifier: 128 bytes.
+	// 17. publisherIdentifier: 128 bytes.
 	pubID := helpers.PadString(pvdb.PublisherIdentifier, 128)
 	copy(data[offset:offset+128], pubID)
 	offset += 128
 
-	// 18. DataPreparerIdentifier: 128 bytes.
+	// 18. dataPreparerIdentifier: 128 bytes.
 	dpID := helpers.PadString(pvdb.DataPreparerIdentifier, 128)
 	copy(data[offset:offset+128], dpID)
 	offset += 128
 
-	// 19. ApplicationIdentifier: 128 bytes.
+	// 19. applicationIdentifier: 128 bytes.
 	appID := helpers.PadString(pvdb.ApplicationIdentifier, 128)
 	copy(data[offset:offset+128], appID)
 	offset += 128
 
-	// 20. CopyrightFileIdentifier: 37 bytes.
+	// 20. copyrightFileIdentifier: 37 bytes.
 	cfID := helpers.PadString(pvdb.CopyrightFileIdentifier, 37)
 	copy(data[offset:offset+37], cfID)
 	offset += 37
 
-	// 21. AbstractFileIdentifier: 37 bytes.
+	// 21. abstractFileIdentifier: 37 bytes.
 	afID := helpers.PadString(pvdb.AbstractFileIdentifier, 37)
 	copy(data[offset:offset+37], afID)
 	offset += 37
 
-	// 22. BibliographicFileIdentifier: 37 bytes.
+	// 22. bibliographicFileIdentifier: 37 bytes.
 	bfID := helpers.PadString(pvdb.BibliographicFileIdentifier, 37)
 	copy(data[offset:offset+37], bfID)
 	offset += 37
 
-	// 23. VolumeCreationDateAndTime: 17 bytes.
+	// 23. volumeCreationDateAndTime: 17 bytes.
 	vcdBytes, err := encoding.MarshalDateTime(pvdb.VolumeCreationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeCreationDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeCreationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vcdBytes[:])
 	offset += 17
 
-	// 24. VolumeModificationDateAndTime: 17 bytes.
+	// 24. volumeModificationDateAndTime: 17 bytes.
 	vmdBytes, err := encoding.MarshalDateTime(pvdb.VolumeModificationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeModificationDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeModificationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vmdBytes[:])
 	offset += 17
 
-	// 25. VolumeExpirationDateAndTime: 17 bytes.
+	// 25. volumeExpirationDateAndTime: 17 bytes.
 	vedBytes, err := encoding.MarshalDateTime(pvdb.VolumeExpirationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeExpirationDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeExpirationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vedBytes[:])
 	offset += 17
 
-	// 26. VolumeEffectiveDateAndTime: 17 bytes.
+	// 26. volumeEffectiveDateAndTime: 17 bytes.
 	vefBytes, err := encoding.MarshalDateTime(pvdb.VolumeEffectiveDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal VolumeEffectiveDateAndTime: %w", err)
+		return data, fmt.Errorf("failed to marshal volumeEffectiveDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vefBytes[:])
 	offset += 17
 
-	// 27. FileStructureVersion: 1 byte.
+	// 27. fileStructureVersion: 1 byte.
 	data[offset] = pvdb.FileStructureVersion
 	offset++
 
-	// 28. ReservedField1: 1 byte.
+	// 28. reservedField1: 1 byte.
 	data[offset] = pvdb.ReservedField1
 	offset++
 
-	// 29. ApplicationUse: 512 bytes.
+	// 29. applicationUse: 512 bytes.
 	copy(data[offset:offset+512], pvdb.ApplicationUse[:])
 	offset += 512
 
-	// 30. ReservedField2: 653 bytes.
+	// 30. reservedField2: 653 bytes.
 	copy(data[offset:offset+653], pvdb.ReservedField2[:])
 	offset += 653
 
@@ -363,182 +423,182 @@ func (pvdb *PrimaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	}
 	offset := 0
 
-	// 1. UnusedField1: 1 byte.
+	// 1. unusedField1: 1 byte.
 	pvdb.UnusedField1 = data[offset]
 	offset++
 
-	// 2. SystemIdentifier: 32 bytes.
+	// 2. systemIdentifier: 32 bytes.
 	pvdb.SystemIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	offset += 32
 
-	// 3. VolumeIdentifier: 32 bytes.
+	// 3. volumeIdentifier: 32 bytes.
 	pvdb.VolumeIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	offset += 32
 
-	// 4. UnusedField2: 8 bytes.
+	// 4. unusedField2: 8 bytes.
 	copy(pvdb.UnusedField2[:], data[offset:offset+8])
 	offset += 8
 
-	// 5. VolumeSpaceSize: 8 bytes (both-byte orders for uint32).
+	// 5. volumeSpaceSize: 8 bytes (both-byte orders for uint32).
 	var vsBytes [8]byte
 	copy(vsBytes[:], data[offset:offset+8])
-	volSpace, err := encoding.UnmarshalBothByteOrders32(vsBytes)
+	volSpace, err := encoding.UnmarshalUint32LSBMSB(vsBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeSpaceSize: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeSpaceSize: %w", err)
 	}
 	pvdb.VolumeSpaceSize = volSpace
 	offset += 8
 
-	// 6. UnusedField3: 32 bytes.
+	// 6. unusedField3: 32 bytes.
 	copy(pvdb.UnusedField3[:], data[offset:offset+32])
 	offset += 32
 
-	// 7. VolumeSetSize: 4 bytes (both-byte orders for uint16).
+	// 7. volumeSetSize: 4 bytes (both-byte orders for uint16).
 	var vssBytes [4]byte
 	copy(vssBytes[:], data[offset:offset+4])
-	volSetSize, err := encoding.UnmarshalBothByteOrders16(vssBytes)
+	volSetSize, err := encoding.UnmarshalUint16LSBMSB(vssBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeSetSize: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeSetSize: %w", err)
 	}
 	pvdb.VolumeSetSize = volSetSize
 	offset += 4
 
-	// 8. VolumeSequenceNumber: 4 bytes (both-byte orders for uint16).
+	// 8. volumeSequenceNumber: 4 bytes (both-byte orders for uint16).
 	var vsnBytes [4]byte
 	copy(vsnBytes[:], data[offset:offset+4])
-	volSeqNum, err := encoding.UnmarshalBothByteOrders16(vsnBytes)
+	volSeqNum, err := encoding.UnmarshalUint16LSBMSB(vsnBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeSequenceNumber: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeSequenceNumber: %w", err)
 	}
 	pvdb.VolumeSequenceNumber = volSeqNum
 	offset += 4
 
-	// 9. LogicalBlockSize: 4 bytes (both-byte orders for uint16).
+	// 9. logicalBlockSize: 4 bytes (both-byte orders for uint16).
 	var lbsBytes [4]byte
 	copy(lbsBytes[:], data[offset:offset+4])
-	logBlockSize, err := encoding.UnmarshalBothByteOrders16(lbsBytes)
+	logBlockSize, err := encoding.UnmarshalUint16LSBMSB(lbsBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal LogicalBlockSize: %w", err)
+		return fmt.Errorf("failed to unmarshal logicalBlockSize: %w", err)
 	}
 	pvdb.LogicalBlockSize = logBlockSize
 	offset += 4
 
-	// 10. PathTableSize: 8 bytes (both-byte orders for uint32).
+	// 10. pathTableSize: 8 bytes (both-byte orders for uint32).
 	var ptsBytes [8]byte
 	copy(ptsBytes[:], data[offset:offset+8])
-	pathTableSize, err := encoding.UnmarshalBothByteOrders32(ptsBytes)
+	pathTableSize, err := encoding.UnmarshalUint32LSBMSB(ptsBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal PathTableSize: %w", err)
+		return fmt.Errorf("failed to unmarshal pathTableSize: %w", err)
 	}
 	pvdb.PathTableSize = pathTableSize
 	offset += 8
 
-	// 11. LocationOfTypeLPathTable: 4 bytes, little-endian.
+	// 11. locationOfTypeLPathTable: 4 bytes, little-endian.
 	pvdb.LocationOfTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 12. LocationOfOptionalTypeLPathTable: 4 bytes, little-endian.
+	// 12. locationOfOptionalTypeLPathTable: 4 bytes, little-endian.
 	pvdb.LocationOfOptionalTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 13. LocationOfTypeMPathTable: 4 bytes, big-endian.
+	// 13. locationOfTypeMPathTable: 4 bytes, big-endian.
 	pvdb.LocationOfTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 14. LocationOfOptionalTypeMPathTable: 4 bytes, big-endian.
+	// 14. locationOfOptionalTypeMPathTable: 4 bytes, big-endian.
 	pvdb.LocationOfOptionalTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 15. RootDirectoryRecord: 34 bytes.
+	// 15. rootDirectoryRecord: 34 bytes.
 	if pvdb.RootDirectoryRecord == nil {
 		pvdb.RootDirectoryRecord = new(directory.DirectoryRecord)
 	}
 	if err := pvdb.RootDirectoryRecord.Unmarshal(data[offset : offset+34]); err != nil {
-		return fmt.Errorf("failed to unmarshal RootDirectoryRecord: %w", err)
+		return fmt.Errorf("failed to unmarshal rootDirectoryRecord: %w", err)
 	}
 	offset += 34
 
-	// 16. VolumeSetIdentifier: 128 bytes.
+	// 16. volumeSetIdentifier: 128 bytes.
 	pvdb.VolumeSetIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 17. PublisherIdentifier: 128 bytes.
+	// 17. publisherIdentifier: 128 bytes.
 	pvdb.PublisherIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 18. DataPreparerIdentifier: 128 bytes.
+	// 18. dataPreparerIdentifier: 128 bytes.
 	pvdb.DataPreparerIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 19. ApplicationIdentifier: 128 bytes.
+	// 19. applicationIdentifier: 128 bytes.
 	pvdb.ApplicationIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	offset += 128
 
-	// 20. CopyrightFileIdentifier: 37 bytes.
+	// 20. copyrightFileIdentifier: 37 bytes.
 	pvdb.CopyrightFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 21. AbstractFileIdentifier: 37 bytes.
+	// 21. abstractFileIdentifier: 37 bytes.
 	pvdb.AbstractFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 22. BibliographicFileIdentifier: 37 bytes.
+	// 22. bibliographicFileIdentifier: 37 bytes.
 	pvdb.BibliographicFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 23. VolumeCreationDateAndTime: 17 bytes.
+	// 23. volumeCreationDateAndTime: 17 bytes.
 	var vcdBytes [17]byte
 	copy(vcdBytes[:], data[offset:offset+17])
 	volCreation, err := encoding.UnmarshalDateTime(vcdBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeCreationDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeCreationDateAndTime: %w", err)
 	}
 	pvdb.VolumeCreationDateAndTime = volCreation
 	offset += 17
 
-	// 24. VolumeModificationDateAndTime: 17 bytes.
+	// 24. volumeModificationDateAndTime: 17 bytes.
 	var vmdBytes [17]byte
 	copy(vmdBytes[:], data[offset:offset+17])
 	volMod, err := encoding.UnmarshalDateTime(vmdBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeModificationDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeModificationDateAndTime: %w", err)
 	}
 	pvdb.VolumeModificationDateAndTime = volMod
 	offset += 17
 
-	// 25. VolumeExpirationDateAndTime: 17 bytes.
+	// 25. volumeExpirationDateAndTime: 17 bytes.
 	var vedBytes [17]byte
 	copy(vedBytes[:], data[offset:offset+17])
 	volExp, err := encoding.UnmarshalDateTime(vedBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeExpirationDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeExpirationDateAndTime: %w", err)
 	}
 	pvdb.VolumeExpirationDateAndTime = volExp
 	offset += 17
 
-	// 26. VolumeEffectiveDateAndTime: 17 bytes.
+	// 26. volumeEffectiveDateAndTime: 17 bytes.
 	var vefBytes [17]byte
 	copy(vefBytes[:], data[offset:offset+17])
 	volEff, err := encoding.UnmarshalDateTime(vefBytes)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal VolumeEffectiveDateAndTime: %w", err)
+		return fmt.Errorf("failed to unmarshal volumeEffectiveDateAndTime: %w", err)
 	}
 	pvdb.VolumeEffectiveDateAndTime = volEff
 	offset += 17
 
-	// 27. FileStructureVersion: 1 byte.
+	// 27. fileStructureVersion: 1 byte.
 	pvdb.FileStructureVersion = data[offset]
 	offset++
 
-	// 28. ReservedField1: 1 byte.
+	// 28. reservedField1: 1 byte.
 	pvdb.ReservedField1 = data[offset]
 	offset++
 
-	// 29. ApplicationUse: 512 bytes.
+	// 29. applicationUse: 512 bytes.
 	copy(pvdb.ApplicationUse[:], data[offset:offset+512])
 	offset += 512
 
-	// 30. ReservedField2: 653 bytes.
+	// 30. reservedField2: 653 bytes.
 	copy(pvdb.ReservedField2[:], data[offset:offset+653])
 	offset += 653
 

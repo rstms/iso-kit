@@ -5,9 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/extensions"
 	"io"
 )
 
@@ -19,8 +21,8 @@ type Parser struct {
 	r io.ReaderAt
 }
 
-// ReadBootRecord reads and validates the ISO9660 boot record.
-func (p *Parser) ReadBootRecord() (*descriptor.BootRecordDescriptor, error) {
+// GetBootRecord reads and validates the ISO9660 boot record.
+func (p *Parser) GetBootRecord() (*descriptor.BootRecordDescriptor, error) {
 	const sectorSize = consts.ISO9660_SECTOR_SIZE
 	// The Volume Descriptor Set starts at logical sector 16.
 	sector := int64(consts.ISO9660_SYSTEM_AREA_SECTORS)
@@ -68,8 +70,8 @@ func (p *Parser) ReadBootRecord() (*descriptor.BootRecordDescriptor, error) {
 	}
 }
 
-// ReadPrimaryVolumeDescriptor reads and validates the ISO9660 PVD.
-func (p *Parser) ReadPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescriptor, error) {
+// GetPrimaryVolumeDescriptor reads and validates the ISO9660 PVD.
+func (p *Parser) GetPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescriptor, error) {
 	var buf [2048]byte
 	_, err := p.r.ReadAt(buf[:], consts.ISO9660_SYSTEM_AREA_SECTORS*consts.ISO9660_SECTOR_SIZE)
 	if err != nil {
@@ -93,15 +95,15 @@ func (p *Parser) ReadPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescrip
 	}
 
 	// Unmarshal the rest of the buffer
-	if err = pvd.Unmarshal(buf[:]); err != nil {
+	if err = pvd.Unmarshal([2048]byte(buf[:])); err != nil {
 		return nil, err
 	}
 
 	return pvd, nil
 }
 
-// ReadSupplementaryVolumeDescriptors reads and validates the ISO9660 SVD.
-func (p *Parser) ReadSupplementaryVolumeDescriptors() ([]*descriptor.SupplementaryVolumeDescriptor, error) {
+// GetSupplementaryVolumeDescriptors reads and validates the ISO9660 SVD.
+func (p *Parser) GetSupplementaryVolumeDescriptors() ([]*descriptor.SupplementaryVolumeDescriptor, error) {
 	const sectorSize = consts.ISO9660_SECTOR_SIZE
 	// The Volume Descriptor Set starts at logical sector 16.
 	sector := int64(consts.ISO9660_SYSTEM_AREA_SECTORS)
@@ -157,6 +159,72 @@ func (p *Parser) ReadSupplementaryVolumeDescriptors() ([]*descriptor.Supplementa
 	}
 }
 
+// BuildFileSystemEntries walks the directory tree and converts entries into FileSystemEntry objects.
+func (p *Parser) BuildFileSystemEntries(rootDir *directory.DirectoryRecord, RockRidgeEnabled bool) ([]*filesystem.FileSystemEntry, error) {
+	if rootDir == nil {
+		return nil, errors.New("rootDir cannot be nil")
+	}
+
+	visited := make(map[uint32]bool) // Prevent infinite recursion
+	var entries []*filesystem.FileSystemEntry
+
+	var walk func(dir *directory.DirectoryRecord, parentPath string) error
+	walk = func(dir *directory.DirectoryRecord, parentPath string) error {
+		if visited[dir.LocationOfExtent] {
+			return nil
+		}
+		visited[dir.LocationOfExtent] = true
+
+		// Read directory records
+		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent)
+		if err != nil {
+			return err
+		}
+
+		for _, record := range dirRecords {
+			// Build full path
+			fullPath := parentPath + "/" + record.GetBestName(RockRidgeEnabled)
+
+			// Retrieve file attributes
+			permissions := record.GetPermissions(RockRidgeEnabled)
+			uid, gid := record.GetOwnership(RockRidgeEnabled)
+			creationTime, modificationTime := record.GetTimestamps(RockRidgeEnabled)
+
+			// Create FileSystemEntry
+			entry := filesystem.FileSystemEntry{
+				Name:       record.GetBestName(RockRidgeEnabled),
+				FullPath:   fullPath,
+				IsDir:      record.IsDirectory(),
+				Size:       record.DataLength,
+				Location:   record.LocationOfExtent,
+				Mode:       permissions,
+				CreateTime: creationTime,
+				ModTime:    modificationTime,
+				UID:        uid,
+				GID:        gid,
+			}
+
+			entries = append(entries, &entry)
+
+			// Recursively walk directories
+			if record.IsDirectory() && !record.IsSpecial() {
+				if err := walk(record, fullPath); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	// Start walking from the root directory
+	if err := walk(rootDir, ""); err != nil {
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+// TODO: Should this not be exported?
 // WalkDirectoryRecords recursively walks the directory tree from a given directory record
 // and returns a slice of fully populated DirectoryRecord pointers.
 func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*directory.DirectoryRecord, error) {
@@ -202,7 +270,8 @@ func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*di
 	return records, nil
 }
 
-// ReadDirectoryRecords reads directory records from a given LBA (logical block address).
+// ReadDirectoryRecords reads directory records from a given LBA (logical block address)
+// and processes Rock Ridge extensions if present.
 func (p *Parser) ReadDirectoryRecords(lba uint32) ([]*directory.DirectoryRecord, error) {
 	// Read a full 2048-byte sector from the given LBA
 	offset := int64(lba) * consts.ISO9660_SECTOR_SIZE
@@ -230,19 +299,27 @@ func (p *Parser) ReadDirectoryRecords(lba uint32) ([]*directory.DirectoryRecord,
 
 		// Read the record data into a buffer
 		recordBuf := make([]byte, length)
-		recordBuf[0] = length // First byte is already read
+		recordBuf[0] = length // First byte already read
 		if _, err := io.ReadFull(reader, recordBuf[1:]); err != nil {
 			return nil, fmt.Errorf("failed to read directory record: %w", err)
 		}
 
 		// Parse directory record from raw data
-		dr := directory.DirectoryRecord{}
+		dr := &directory.DirectoryRecord{}
 		err = dr.Unmarshal(recordBuf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse directory record: %w", err)
 		}
 
-		records = append(records, &dr)
+		// **Parse Rock Ridge extensions if present**
+		if len(dr.SystemUse) > 0 {
+			rr, err := extensions.UnmarshalRockRidge(dr.SystemUse)
+			if err == nil {
+				dr.RockRidge = rr
+			}
+		}
+
+		records = append(records, dr)
 	}
 
 	return records, nil

@@ -1,7 +1,7 @@
 package iso9660
 
 import (
-	"github.com/bgrewell/iso-kit/pkg/file"
+	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
@@ -10,6 +10,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/option"
 	"github.com/go-logr/logr"
 	"io"
+	"time"
 )
 
 //10.1 Level 1
@@ -38,7 +39,8 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		ParseOnOpen:                true,
 		PreloadDir:                 true,
 		StripVersionInfo:           true,
-		PreferEnhancedVolumes:      true,
+		RockRidgeEnabled:           true,
+		PreferJoliet:               false,
 		BootFileExtractLocation:    "[BOOT]",
 		ExtractionProgressCallback: emptyCallback,
 		Logger:                     logr.Discard(),
@@ -61,38 +63,48 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	p := parser.NewParser(isoReader)
 
 	// Read the boot record
-	bootRecord, err := p.ReadBootRecord()
+	bootRecord, err := p.GetBootRecord()
 	if err != nil {
 		return nil, err
 	}
 
 	// Read the primary volume descriptor
-	pvd, err := p.ReadPrimaryVolumeDescriptor()
+	pvd, err := p.GetPrimaryVolumeDescriptor()
 	if err != nil {
 		return nil, err
 	}
 
 	// Read the supplementary volume descriptors
-	svds, err := p.ReadSupplementaryVolumeDescriptors()
+	svds, err := p.GetSupplementaryVolumeDescriptors()
 	if err != nil {
 		return nil, err
 	}
 
+	// Handle processing volume descriptor
+	var filesystemEntries []*filesystem.FileSystemEntry
 	var directoryRecords []*directory.DirectoryRecord
-	if openOptions.PreferEnhancedVolumes && len(svds) > 0 {
+	var activeVD descriptor.VolumeDescriptor
+	if openOptions.PreferJoliet && len(svds) > 0 {
+		// Open the Joliet filesystem
+		filesystemEntries, err = p.BuildFileSystemEntries(svds[0].RootDirectoryRecord, false)
 		directoryRecords, err = p.WalkDirectoryRecords(svds[0].RootDirectoryRecord)
+		activeVD = svds[0]
 	} else {
+		filesystemEntries, err = p.BuildFileSystemEntries(pvd.RootDirectoryRecord, openOptions.RockRidgeEnabled)
 		directoryRecords, err = p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
+		activeVD = pvd
 	}
 
 	iso := &ISO9660{
-		isoReader:        isoReader,
-		openOptions:      openOptions,
-		systemArea:       sa,
-		bootRecord:       bootRecord,
-		pvd:              pvd,
-		svds:             svds,
-		directoryRecords: directoryRecords,
+		isoReader:         isoReader,
+		openOptions:       openOptions,
+		systemArea:        sa,
+		bootRecord:        bootRecord,
+		pvd:               pvd,
+		svds:              svds,
+		directoryRecords:  directoryRecords,
+		filesystemEntries: filesystemEntries,
+		activeVD:          activeVD,
 	}
 
 	return iso, nil
@@ -104,32 +116,128 @@ func Create(filename string, rootPath string, opts ...option.CreateOption) (*ISO
 }
 
 type ISO9660 struct {
-	isoReader        io.ReaderAt
-	openOptions      *option.OpenOptions
-	createOptions    *option.CreateOptions
-	systemArea       systemarea.SystemArea
-	bootRecord       *descriptor.BootRecordDescriptor
-	pvd              *descriptor.PrimaryVolumeDescriptor
-	svds             []*descriptor.SupplementaryVolumeDescriptor
-	directoryRecords []*directory.DirectoryRecord
+	isoReader         io.ReaderAt
+	openOptions       *option.OpenOptions
+	createOptions     *option.CreateOptions
+	systemArea        systemarea.SystemArea
+	bootRecord        *descriptor.BootRecordDescriptor
+	pvd               *descriptor.PrimaryVolumeDescriptor
+	svds              []*descriptor.SupplementaryVolumeDescriptor
+	activeVD          descriptor.VolumeDescriptor
+	directoryRecords  []*directory.DirectoryRecord
+	filesystemEntries []*filesystem.FileSystemEntry
 }
 
 func (iso *ISO9660) GetVolumeID() string {
-	//TODO implement me
-	panic("implement me")
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.VolumeIdentifier()
 }
 
 func (iso *ISO9660) GetSystemID() string {
-	//TODO implement me
-	panic("implement me")
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.SystemIdentifier()
 }
 
 func (iso *ISO9660) GetVolumeSize() uint32 {
-	//TODO implement me
-	panic("implement me")
+	return 0
 }
 
-func (iso *ISO9660) ListFiles() ([]file.FileEntry, error) {
+func (iso *ISO9660) GetVolumeSetID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.VolumeSetIdentifier()
+}
+
+func (iso *ISO9660) GetPublisherID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.PublisherIdentifier()
+}
+
+func (iso *ISO9660) GetDataPreparerID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.DataPreparerIdentifier()
+}
+
+func (iso *ISO9660) GetApplicationID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.ApplicationIdentifier()
+}
+
+func (iso *ISO9660) GetCopyrightID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.CopyrightFileIdentifier()
+}
+
+func (iso *ISO9660) GetAbstractID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.AbstractFileIdentifier()
+}
+
+func (iso *ISO9660) GetBibliographicID() string {
+	if iso.activeVD == nil {
+		return ""
+	}
+	return iso.activeVD.BibliographicFileIdentifier()
+}
+
+func (iso *ISO9660) GetCreationDateTime() time.Time {
+	if iso.activeVD == nil {
+		return time.Time{}
+	}
+	return iso.activeVD.VolumeCreationDateTime()
+}
+
+func (iso *ISO9660) GetModificationDateTime() time.Time {
+	if iso.activeVD == nil {
+		return time.Time{}
+	}
+	return iso.activeVD.VolumeModificationDateTime()
+}
+
+func (iso *ISO9660) GetExpirationDateTime() time.Time {
+	if iso.activeVD == nil {
+		return time.Time{}
+	}
+	return iso.activeVD.VolumeExpirationDateTime()
+}
+
+func (iso *ISO9660) GetEffectiveDateTime() time.Time {
+	if iso.activeVD == nil {
+		return time.Time{}
+	}
+	return iso.activeVD.VolumeEffectiveDateTime()
+}
+
+func (iso *ISO9660) HasJoliet() bool {
+	if iso.activeVD == nil {
+		return false
+	}
+	return iso.activeVD.HasJoliet()
+}
+
+func (iso *ISO9660) HasRockRidge() bool {
+	if iso.activeVD == nil {
+		return false
+	}
+	return iso.activeVD.HasRockRidge()
+}
+
+func (iso *ISO9660) ListFiles() ([]filesystem.FileSystemEntry, error) {
 	//TODO implement me
 	panic("implement me")
 }
