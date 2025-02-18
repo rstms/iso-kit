@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/bgrewell/iso-kit"
+	"github.com/bgrewell/iso-kit/pkg/option"
 	"github.com/bgrewell/usage"
 	"os"
 )
@@ -54,9 +55,6 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 	dirs, err := i.ListDirectories()
 	if err != nil {
 		fmt.Println("Failed to list directories:", err)
-	}
-	for _, dir := range dirs {
-		fmt.Println(dir.Name)
 	}
 
 	for _, entry := range append(files, dirs...) {
@@ -137,7 +135,7 @@ func main() {
 
 	_ = verbose
 
-	i, err := iso.Open(*path)
+	i, err := iso.Open(*path, option.WithPreferJoliet(true))
 	if err != nil {
 		u.PrintError(err)
 		os.Exit(1)

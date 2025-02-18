@@ -9,6 +9,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE is the total size (in bytes) of the SVD body according to ISO9660.
@@ -436,51 +437,61 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	return data, nil
 }
 
-// Unmarshal parses a SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE‑byte slice into the SupplementaryVolumeDescriptorBody.
-// Fixed‑width string fields have their trailing spaces trimmed.
+// Unmarshal parses a SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE-byte slice into the SupplementaryVolumeDescriptorBody.
+// Fixed-width string fields are properly decoded based on Joliet UCS-2 encoding.
 func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	if len(data) < SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE {
 		return fmt.Errorf("data too short: expected %d bytes, got %d", SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE, len(data))
 	}
+
+	// Handle Joliet early to determine UCS-2 encoding.
+	copy(svdb.EscapeSequences[:], data[81:112])
+
 	offset := 0
 
-	// 1. VolumeFlags.
+	// 1. Volume Flags (1 byte)
 	svdb.VolumeFlags = data[offset]
 	offset++
 
-	// 2. systemIdentifier: 32 bytes.
+	// 2. System Identifier: 32 bytes (ASCII)
 	svdb.SystemIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	offset += 32
 
-	// 3. volumeIdentifier: 32 bytes.
-	svdb.VolumeIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
+	// 3. Volume Identifier: 32 bytes (Joliet = UCS-2, else ASCII)
+	if svdb.IsJoliet() {
+		svdb.VolumeIdentifier = decodeUCS2(data[offset : offset+32])
+	} else {
+		svdb.VolumeIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
+	}
+	//TODO: ATTENTION ----- TOMORROW MORNING
+	//      -- Ensure that DirectoryRecords know if they are Joliet and if they are are properly decoded
 	offset += 32
 
-	// 4. unusedField1: 8 bytes.
+	// 4. Unused Field 1: 8 bytes
 	copy(svdb.UnusedField1[:], data[offset:offset+8])
 	offset += 8
 
-	// 5. volumeSpaceSize: 8 bytes.
+	// 5. Volume Space Size: 8 bytes
 	copy(svdb.VolumeSpaceSize[:], data[offset:offset+8])
 	offset += 8
 
-	// 6. EscapeSequences: 32 bytes.
-	copy(svdb.EscapeSequences[:], data[offset:offset+32])
+	// 6. Escape Sequences: 32 bytes (Used to determine Joliet)
+	//copy(svdb.EscapeSequences[:], data[offset:offset+32]) // Handled earlier in the function
 	offset += 32
 
-	// 7. volumeSetSize: 4 bytes.
+	// 7. Volume Set Size: 4 bytes
 	copy(svdb.VolumeSetSize[:], data[offset:offset+4])
 	offset += 4
 
-	// 8. volumeSequenceNumber: 4 bytes.
+	// 8. Volume Sequence Number: 4 bytes
 	copy(svdb.VolumeSequenceNumber[:], data[offset:offset+4])
 	offset += 4
 
-	// 9. logicalBlockSize: 4 bytes.
+	// 9. Logical Block Size: 4 bytes
 	copy(svdb.LogicalBlockSize[:], data[offset:offset+4])
 	offset += 4
 
-	// 10. pathTableSize: 8 bytes (both-byte orders for uint32; use little-endian value).
+	// 10. Path Table Size: 8 bytes
 	var ptsBytes [8]byte
 	copy(ptsBytes[:], data[offset:offset+8])
 	pathTableSize, err := encoding.UnmarshalUint32LSBMSB(ptsBytes)
@@ -490,23 +501,23 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	svdb.PathTableSize = pathTableSize
 	offset += 8
 
-	// 11. locationOfTypeLPathTable: 4 bytes, little-endian.
+	// 11. Location of Type L Path Table: 4 bytes
 	svdb.LocationOfTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 12. locationOfOptionalTypeLPathTable: 4 bytes, little-endian.
+	// 12. Location of Optional Type L Path Table: 4 bytes
 	svdb.LocationOfOptionalTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 13. locationOfTypeMPathTable: 4 bytes, big-endian.
+	// 13. Location of Type M Path Table: 4 bytes (Big-endian)
 	svdb.LocationOfTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 14. locationOfOptionalTypeMPathTable: 4 bytes, big-endian.
+	// 14. Location of Optional Type M Path Table: 4 bytes (Big-endian)
 	svdb.LocationOfOptionalTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 15. rootDirectoryRecord: 34 bytes.
+	// 15. Root Directory Record: 34 bytes
 	if svdb.RootDirectoryRecord == nil {
 		svdb.RootDirectoryRecord = new(directory.DirectoryRecord)
 	}
@@ -515,35 +526,51 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	}
 	offset += 34
 
-	// 16. volumeSetIdentifier: 128 bytes.
-	svdb.VolumeSetIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	// 16. Volume Set Identifier: 128 bytes (Joliet = UCS-2, else ASCII)
+	if svdb.IsJoliet() {
+		svdb.VolumeSetIdentifier = decodeUCS2(data[offset : offset+128])
+	} else {
+		svdb.VolumeSetIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	}
 	offset += 128
 
-	// 17. publisherIdentifier: 128 bytes.
-	svdb.PublisherIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	// 17. Publisher Identifier: 128 bytes
+	if svdb.IsJoliet() {
+		svdb.PublisherIdentifier = decodeUCS2(data[offset : offset+128])
+	} else {
+		svdb.PublisherIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	}
 	offset += 128
 
-	// 18. dataPreparerIdentifier: 128 bytes.
-	svdb.DataPreparerIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	// 18. Data Preparer Identifier: 128 bytes
+	if svdb.IsJoliet() {
+		svdb.DataPreparerIdentifier = decodeUCS2(data[offset : offset+128])
+	} else {
+		svdb.DataPreparerIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	}
 	offset += 128
 
-	// 19. applicationIdentifier: 128 bytes.
-	svdb.ApplicationIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	// 19. Application Identifier: 128 bytes
+	if svdb.IsJoliet() {
+		svdb.ApplicationIdentifier = decodeUCS2(data[offset : offset+128])
+	} else {
+		svdb.ApplicationIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
+	}
 	offset += 128
 
-	// 20. copyrightFileIdentifier: 37 bytes.
+	// 20. Copyright File Identifier: 37 bytes
 	svdb.CopyrightFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 21. abstractFileIdentifier: 37 bytes.
+	// 21. Abstract File Identifier: 37 bytes
 	svdb.AbstractFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 22. bibliographicFileIdentifier: 37 bytes.
+	// 22. Bibliographic File Identifier: 37 bytes
 	svdb.BibliographicFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
 	offset += 37
 
-	// 23. volumeCreationDateAndTime: 17 bytes.
+	// 23. Volume Creation Date & Time: 17 bytes
 	var vcdBytes [17]byte
 	copy(vcdBytes[:], data[offset:offset+17])
 	volCreation, err := encoding.UnmarshalDateTime(vcdBytes)
@@ -553,7 +580,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	svdb.VolumeCreationDateAndTime = volCreation
 	offset += 17
 
-	// 24. volumeModificationDateAndTime: 17 bytes.
+	// 24. Volume Modification Date & Time: 17 bytes
 	var vmdBytes [17]byte
 	copy(vmdBytes[:], data[offset:offset+17])
 	volMod, err := encoding.UnmarshalDateTime(vmdBytes)
@@ -583,11 +610,11 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	svdb.VolumeEffectiveDateAndTime = volEff
 	offset += 17
 
-	// 27. fileStructureVersion: 1 byte.
+	// 27. File Structure Version: 1 byte
 	svdb.FileStructureVersion = data[offset]
 	offset++
 
-	// 28. reservedField1: 1 byte.
+	// 28. Reserved Field: 1 byte
 	svdb.ReservedField1 = data[offset]
 	offset++
 
@@ -595,12 +622,37 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	copy(svdb.ApplicationUse[:], data[offset:offset+len(svdb.ApplicationUse)])
 	offset += len(svdb.ApplicationUse)
 
-	// 30. reservedField2: 653 bytes.
-	copy(svdb.ReservedField2[:], data[offset:offset+len(svdb.ReservedField2)])
-	offset += len(svdb.ReservedField2)
+	// 30. Reserved Field 2: 653 bytes
+	copy(svdb.ReservedField2[:], data[offset:offset+653])
+	offset += 653
 
+	// Ensure total offset matches expected size
 	if offset != SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE {
 		return fmt.Errorf("unmarshal error: expected offset %d, got %d", SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE, offset)
 	}
 	return nil
+}
+
+// Check if the SVD is Joliet by inspecting the Escape Sequences
+func (svdb *SupplementaryVolumeDescriptorBody) IsJoliet() bool {
+	return string(svdb.EscapeSequences[:3]) == consts.JOLIET_LEVEL_1_ESCAPE ||
+		string(svdb.EscapeSequences[:3]) == consts.JOLIET_LEVEL_2_ESCAPE ||
+		string(svdb.EscapeSequences[:3]) == consts.JOLIET_LEVEL_3_ESCAPE
+}
+
+// Convert UCS-2 Little-Endian encoded string to UTF-8
+func decodeUCS2(ucs2 []byte) string {
+	if len(ucs2)%2 != 0 {
+		return "" // Invalid UCS2 input
+	}
+
+	utf16Slice := make([]uint16, len(ucs2)/2)
+	for i := 0; i < len(ucs2)/2; i++ {
+		utf16Slice[i] = uint16(ucs2[2*i])<<8 | uint16(ucs2[2*i+1])
+	}
+
+	runes := utf16.Decode(utf16Slice)
+
+	s := string(runes)
+	return s
 }
