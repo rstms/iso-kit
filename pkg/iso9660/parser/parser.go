@@ -1,9 +1,11 @@
 package parser
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/boot"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
@@ -66,6 +68,20 @@ func (p *Parser) GetBootRecord() (*descriptor.BootRecordDescriptor, error) {
 		// Otherwise, move to the next sector.
 		sector++
 	}
+}
+
+func (p *Parser) GetElTorito(bootRecord *descriptor.BootRecordDescriptor) (*boot.ElTorito, error) {
+	catalogIndex := binary.LittleEndian.Uint32(bootRecord.BootSystemUse[:4])
+	catalogOffset := int64(catalogIndex) * consts.ISO9660_SECTOR_SIZE
+	catalogBytes := [consts.ISO9660_SECTOR_SIZE]byte{}
+	if _, err := p.r.ReadAt(catalogBytes[:], catalogOffset); err != nil {
+		return nil, err
+	}
+	et := &boot.ElTorito{}
+	if err := et.UnmarshalBinary(catalogBytes[:]); err != nil {
+		return nil, err
+	}
+	return et, nil
 }
 
 // GetPrimaryVolumeDescriptor reads and validates the ISO9660 PVD.

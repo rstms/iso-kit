@@ -100,9 +100,23 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 		if i.HasRockRidge() {
 			fmt.Println("\n--- Rock Ridge Extensions ---")
 			fmt.Println("Rock Ridge Enabled: YES")
-			fmt.Printf("Number of Entries with Extended Attributes: %d\n", rrEnabled)
+			fmt.Printf("  Number of Entries with Extended Attributes: %d\n", rrEnabled)
 		} else {
 			fmt.Println("\nRock Ridge Extensions: NOT PRESENT")
+		}
+
+		// El Torito Boot Support
+		if i.HasElTorito() {
+			fmt.Println("\n--- El Torito Boot Extensions ---")
+			fmt.Println("El Torito Boot Support: YES")
+			bootEntries, err := i.ListBootEntries()
+			if err != nil {
+				fmt.Println("Failed to list boot entries:", err)
+			}
+			fmt.Printf("Number of Boot Entries: %d\n", len(bootEntries))
+			for _, entry := range bootEntries {
+				fmt.Printf("  Boot Entry: %s\n", entry.Name)
+			}
 		}
 	}
 

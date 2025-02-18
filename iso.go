@@ -30,6 +30,7 @@ type ISO interface {
 	GetVolumeSize() uint32
 	RootDirectoryLocation() uint32
 
+	ListBootEntries() ([]*filesystem.FileSystemEntry, error)
 	ListFiles() ([]*filesystem.FileSystemEntry, error)
 	ListDirectories() ([]*filesystem.FileSystemEntry, error)
 	ReadFile(path string) ([]byte, error)
@@ -38,6 +39,7 @@ type ISO interface {
 
 	HasJoliet() bool
 	HasRockRidge() bool
+	HasElTorito() bool
 
 	Save(writer io.Writer) error
 	Close() error

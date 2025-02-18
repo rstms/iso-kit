@@ -2,6 +2,7 @@ package iso9660
 
 import (
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/boot"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
@@ -68,6 +69,15 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		return nil, err
 	}
 
+	// Check for El-Torito boot record
+	var et *boot.ElTorito
+	if boot.IsElTorito(bootRecord.BootSystemIdentifier) {
+		et, err = p.GetElTorito(bootRecord)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Read the primary volume descriptor
 	pvd, err := p.GetPrimaryVolumeDescriptor()
 	if err != nil {
@@ -105,6 +115,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		directoryRecords:  directoryRecords,
 		filesystemEntries: filesystemEntries,
 		activeVD:          activeVD,
+		elTorito:          et,
 	}
 
 	return iso, nil
@@ -126,6 +137,7 @@ type ISO9660 struct {
 	activeVD          descriptor.VolumeDescriptor
 	directoryRecords  []*directory.DirectoryRecord
 	filesystemEntries []*filesystem.FileSystemEntry
+	elTorito          *boot.ElTorito
 }
 
 func (iso *ISO9660) GetVolumeID() string {
@@ -241,8 +253,17 @@ func (iso *ISO9660) HasRockRidge() bool {
 	return false
 }
 
+// HasElTorito returns true if the ISO9660 filesystem has El Torito boot extensions.
+func (iso *ISO9660) HasElTorito() bool {
+	return iso.elTorito != nil
+}
+
 func (iso *ISO9660) RootDirectoryLocation() uint32 {
 	return iso.activeVD.RootDirectory().LocationOfExtent
+}
+
+func (iso *ISO9660) ListBootEntries() ([]*filesystem.FileSystemEntry, error) {
+	return iso.elTorito.BuildBootImageEntries()
 }
 
 func (iso *ISO9660) ListFiles() ([]*filesystem.FileSystemEntry, error) {

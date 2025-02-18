@@ -85,6 +85,11 @@ func (U UDF) HasRockRidge() bool {
 	panic("implement me")
 }
 
+func (U UDF) HasElTorito() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (U UDF) GetVolumeID() string {
 	//TODO implement me
 	panic("implement me")
@@ -96,6 +101,11 @@ func (U UDF) GetSystemID() string {
 }
 
 func (U UDF) GetVolumeSize() uint32 {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (U UDF) ListBootEntries() ([]*filesystem.FileSystemEntry, error) {
 	//TODO implement me
 	panic("implement me")
 }
