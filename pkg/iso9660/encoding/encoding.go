@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
+	"unicode/utf16"
 )
 
 // MarshalBothByteOrders32 converts a uint32 value into an 8-byte field that
@@ -207,4 +208,21 @@ func UnmarshalRecordingDateTime(b [7]byte) (time.Time, error) {
 
 	loc := time.FixedZone("ISO9660", offsetSec)
 	return time.Date(year, month, day, hour, minute, second, 0, loc), nil
+}
+
+// Convert UCS-2 Little-Endian encoded string to UTF-8
+func DecodeUCS2(ucs2 []byte) string {
+	if len(ucs2)%2 != 0 {
+		return "" // Invalid UCS2 input
+	}
+
+	utf16Slice := make([]uint16, len(ucs2)/2)
+	for i := 0; i < len(ucs2)/2; i++ {
+		utf16Slice[i] = uint16(ucs2[2*i])<<8 | uint16(ucs2[2*i+1])
+	}
+
+	runes := utf16.Decode(utf16Slice)
+
+	s := string(runes)
+	return s
 }

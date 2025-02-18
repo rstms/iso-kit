@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/bgrewell/iso-kit"
-	"github.com/bgrewell/iso-kit/pkg/option"
 	"github.com/bgrewell/usage"
 	"os"
 )
@@ -135,7 +134,7 @@ func main() {
 
 	_ = verbose
 
-	i, err := iso.Open(*path, option.WithPreferJoliet(true))
+	i, err := iso.Open(*path)
 	if err != nil {
 		u.PrintError(err)
 		os.Exit(1)

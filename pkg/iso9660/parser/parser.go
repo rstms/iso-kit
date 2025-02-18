@@ -174,7 +174,7 @@ func (p *Parser) BuildFileSystemEntries(rootDir *directory.DirectoryRecord, Rock
 		visited[dir.LocationOfExtent] = true
 
 		// Read directory records
-		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent, dir.DataLength)
+		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent, dir.DataLength, rootDir.Joliet)
 		if err != nil {
 			return err
 		}
@@ -204,8 +204,8 @@ func (p *Parser) BuildFileSystemEntries(rootDir *directory.DirectoryRecord, Rock
 				DirectoryRecord: record,
 			}
 
-			// Filter out root and parent entries
-			if record.FileIdentifier[0] == 0x00 || record.FileIdentifier[0] == 0x01 {
+			// Filter out root and parent entries4
+			if len(record.FileIdentifier) == 0 || record.FileIdentifier[0] == 0x00 || record.FileIdentifier[0] == 0x01 {
 				continue
 			}
 
@@ -249,7 +249,7 @@ func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*di
 		visited[dir.LocationOfExtent] = true
 
 		// Read directory records from this LBA
-		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent, dir.DataLength)
+		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent, dir.DataLength, rootDir.Joliet)
 		if err != nil {
 			return err
 		}
@@ -277,7 +277,7 @@ func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*di
 
 // ReadDirectoryRecords reads directory records from a given LBA (logical block address)
 // and processes Rock Ridge extensions if present.
-func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32) ([]*directory.DirectoryRecord, error) {
+func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32, joliet bool) ([]*directory.DirectoryRecord, error) {
 
 	sectorSize := consts.ISO9660_SECTOR_SIZE
 	offset := int64(lba) * int64(sectorSize)
@@ -317,7 +317,9 @@ func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32) ([]*directo
 		}
 
 		recordData := buf[index : index+int(length)]
-		dr := &directory.DirectoryRecord{}
+		dr := &directory.DirectoryRecord{
+			Joliet: joliet,
+		}
 		err = dr.Unmarshal(recordData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse directory record: %w", err)

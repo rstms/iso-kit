@@ -9,7 +9,6 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
 	"strings"
 	"time"
-	"unicode/utf16"
 )
 
 // SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE is the total size (in bytes) of the SVD body according to ISO9660.
@@ -459,12 +458,11 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 3. Volume Identifier: 32 bytes (Joliet = UCS-2, else ASCII)
 	if svdb.IsJoliet() {
-		svdb.VolumeIdentifier = decodeUCS2(data[offset : offset+32])
+		svdb.VolumeIdentifier = encoding.DecodeUCS2(data[offset : offset+32])
 	} else {
 		svdb.VolumeIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	}
-	//TODO: ATTENTION ----- TOMORROW MORNING
-	//      -- Ensure that DirectoryRecords know if they are Joliet and if they are are properly decoded
+
 	offset += 32
 
 	// 4. Unused Field 1: 8 bytes
@@ -475,8 +473,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	copy(svdb.VolumeSpaceSize[:], data[offset:offset+8])
 	offset += 8
 
-	// 6. Escape Sequences: 32 bytes (Used to determine Joliet)
-	//copy(svdb.EscapeSequences[:], data[offset:offset+32]) // Handled earlier in the function
+	// 6. Skip over the Escape Sequences: 32 bytes (Used to determine Joliet) since it was read above
 	offset += 32
 
 	// 7. Volume Set Size: 4 bytes
@@ -524,11 +521,12 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	if err := svdb.RootDirectoryRecord.Unmarshal(data[offset : offset+34]); err != nil {
 		return fmt.Errorf("failed to unmarshal rootDirectoryRecord: %w", err)
 	}
+	svdb.RootDirectoryRecord.Joliet = svdb.IsJoliet()
 	offset += 34
 
 	// 16. Volume Set Identifier: 128 bytes (Joliet = UCS-2, else ASCII)
 	if svdb.IsJoliet() {
-		svdb.VolumeSetIdentifier = decodeUCS2(data[offset : offset+128])
+		svdb.VolumeSetIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
 	} else {
 		svdb.VolumeSetIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -536,7 +534,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 17. Publisher Identifier: 128 bytes
 	if svdb.IsJoliet() {
-		svdb.PublisherIdentifier = decodeUCS2(data[offset : offset+128])
+		svdb.PublisherIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
 	} else {
 		svdb.PublisherIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -544,7 +542,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 18. Data Preparer Identifier: 128 bytes
 	if svdb.IsJoliet() {
-		svdb.DataPreparerIdentifier = decodeUCS2(data[offset : offset+128])
+		svdb.DataPreparerIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
 	} else {
 		svdb.DataPreparerIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -552,7 +550,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 19. Application Identifier: 128 bytes
 	if svdb.IsJoliet() {
-		svdb.ApplicationIdentifier = decodeUCS2(data[offset : offset+128])
+		svdb.ApplicationIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
 	} else {
 		svdb.ApplicationIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -638,21 +636,4 @@ func (svdb *SupplementaryVolumeDescriptorBody) IsJoliet() bool {
 	return string(svdb.EscapeSequences[:3]) == consts.JOLIET_LEVEL_1_ESCAPE ||
 		string(svdb.EscapeSequences[:3]) == consts.JOLIET_LEVEL_2_ESCAPE ||
 		string(svdb.EscapeSequences[:3]) == consts.JOLIET_LEVEL_3_ESCAPE
-}
-
-// Convert UCS-2 Little-Endian encoded string to UTF-8
-func decodeUCS2(ucs2 []byte) string {
-	if len(ucs2)%2 != 0 {
-		return "" // Invalid UCS2 input
-	}
-
-	utf16Slice := make([]uint16, len(ucs2)/2)
-	for i := 0; i < len(ucs2)/2; i++ {
-		utf16Slice[i] = uint16(ucs2[2*i])<<8 | uint16(ucs2[2*i+1])
-	}
-
-	runes := utf16.Decode(utf16Slice)
-
-	s := string(runes)
-	return s
 }

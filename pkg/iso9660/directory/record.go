@@ -80,6 +80,8 @@ type DirectoryRecord struct {
 	SystemUse []byte `json:"system_use"`
 	// RockRidge is a field to store Rock Ridge extensions if they exist
 	RockRidge *extensions.RockRidgeExtensions `json:"rock_ridge"`
+	// Joliet is a field to store if this record is from a volume with Joliet extensions
+	Joliet bool `json:"joliet"`
 }
 
 // IsDirectory checks if the entry is a Directory
@@ -318,7 +320,12 @@ func (dr *DirectoryRecord) Unmarshal(data []byte) error {
 	if offset+fiLen > int(recordLength) {
 		return fmt.Errorf("insufficient data for File Identifier")
 	}
-	dr.FileIdentifier = string(data[offset : offset+fiLen])
+	
+	if dr.Joliet {
+		dr.FileIdentifier = encoding.DecodeUCS2(data[offset : offset+fiLen])
+	} else {
+		dr.FileIdentifier = string(data[offset : offset+fiLen])
+	}
 	offset += fiLen
 
 	// Padding Field: present if the File Identifier length is even.
