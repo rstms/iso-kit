@@ -223,6 +223,7 @@ func (iso *ISO9660) GetEffectiveDateTime() time.Time {
 	return iso.activeVD.VolumeEffectiveDateTime()
 }
 
+// HasJoliet returns true if the ISO9660 filesystem has Joliet extensions.
 func (iso *ISO9660) HasJoliet() bool {
 	if iso.activeVD == nil {
 		return false
@@ -230,16 +231,40 @@ func (iso *ISO9660) HasJoliet() bool {
 	return iso.activeVD.HasJoliet()
 }
 
+// HasRockRidge returns true if the ISO9660 filesystem has Rock Ridge extensions.
 func (iso *ISO9660) HasRockRidge() bool {
-	if iso.activeVD == nil {
-		return false
+	for _, rec := range iso.directoryRecords {
+		if rec.RockRidge != nil {
+			return true
+		}
 	}
-	return iso.activeVD.HasRockRidge()
+	return false
 }
 
-func (iso *ISO9660) ListFiles() ([]filesystem.FileSystemEntry, error) {
-	//TODO implement me
-	panic("implement me")
+func (iso *ISO9660) RootDirectoryLocation() uint32 {
+	return iso.activeVD.RootDirectory().LocationOfExtent
+}
+
+func (iso *ISO9660) ListFiles() ([]*filesystem.FileSystemEntry, error) {
+	files := make([]*filesystem.FileSystemEntry, 0)
+	for _, entry := range iso.filesystemEntries {
+		if !entry.IsDir {
+			files = append(files, entry)
+		}
+	}
+
+	return files, nil
+}
+
+func (iso *ISO9660) ListDirectories() ([]*filesystem.FileSystemEntry, error) {
+	dirs := make([]*filesystem.FileSystemEntry, 0)
+	for _, entry := range iso.filesystemEntries {
+		if entry.IsDir {
+			dirs = append(dirs, entry)
+		}
+	}
+
+	return dirs, nil
 }
 
 func (iso *ISO9660) ReadFile(path string) ([]byte, error) {

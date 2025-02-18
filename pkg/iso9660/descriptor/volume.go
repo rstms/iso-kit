@@ -2,6 +2,7 @@ package descriptor
 
 import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"time"
 )
 
@@ -44,6 +45,7 @@ type VolumeDescriptor interface {
 	VolumeEffectiveDateTime() time.Time
 	HasJoliet() bool
 	HasRockRidge() bool
+	RootDirectory() *directory.DirectoryRecord
 	Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error)
 	Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) error
 }

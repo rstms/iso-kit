@@ -15,6 +15,11 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*UDF, error) {
 type UDF struct {
 }
 
+func (U UDF) RootDirectoryLocation() uint32 {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (U UDF) GetVolumeSetID() string {
 	//TODO implement me
 	panic("implement me")
@@ -95,7 +100,12 @@ func (U UDF) GetVolumeSize() uint32 {
 	panic("implement me")
 }
 
-func (U UDF) ListFiles() ([]filesystem.FileSystemEntry, error) {
+func (U UDF) ListFiles() ([]*filesystem.FileSystemEntry, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (U UDF) ListDirectories() ([]*filesystem.FileSystemEntry, error) {
 	//TODO implement me
 	panic("implement me")
 }

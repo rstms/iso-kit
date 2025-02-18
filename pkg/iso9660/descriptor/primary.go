@@ -79,7 +79,16 @@ func (pvd *PrimaryVolumeDescriptor) HasJoliet() bool {
 }
 
 func (pvd *PrimaryVolumeDescriptor) HasRockRidge() bool {
+	if pvd.PrimaryVolumeDescriptorBody.RootDirectoryRecord == nil ||
+		pvd.PrimaryVolumeDescriptorBody.RootDirectoryRecord.RockRidge == nil {
+		return false
+	}
+
 	return pvd.PrimaryVolumeDescriptorBody.RootDirectoryRecord.RockRidge.HasRockRidge()
+}
+
+func (pvd *PrimaryVolumeDescriptor) RootDirectory() *directory.DirectoryRecord {
+	return pvd.PrimaryVolumeDescriptorBody.RootDirectoryRecord
 }
 
 func (pvd *PrimaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {

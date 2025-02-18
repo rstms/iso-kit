@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
@@ -176,7 +174,7 @@ func (p *Parser) BuildFileSystemEntries(rootDir *directory.DirectoryRecord, Rock
 		visited[dir.LocationOfExtent] = true
 
 		// Read directory records
-		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent)
+		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent, dir.DataLength)
 		if err != nil {
 			return err
 		}
@@ -192,23 +190,30 @@ func (p *Parser) BuildFileSystemEntries(rootDir *directory.DirectoryRecord, Rock
 
 			// Create FileSystemEntry
 			entry := filesystem.FileSystemEntry{
-				Name:       record.GetBestName(RockRidgeEnabled),
-				FullPath:   fullPath,
-				IsDir:      record.IsDirectory(),
-				Size:       record.DataLength,
-				Location:   record.LocationOfExtent,
-				Mode:       permissions,
-				CreateTime: creationTime,
-				ModTime:    modificationTime,
-				UID:        uid,
-				GID:        gid,
+				Name:            record.GetBestName(RockRidgeEnabled),
+				FullPath:        fullPath,
+				IsDir:           record.IsDirectory(),
+				Size:            record.DataLength,
+				Location:        record.LocationOfExtent,
+				Mode:            permissions,
+				CreateTime:      creationTime,
+				ModTime:         modificationTime,
+				UID:             uid,
+				GID:             gid,
+				HasRockRidge:    record.RockRidge != nil,
+				DirectoryRecord: record,
+			}
+
+			// Filter out root and parent entries
+			if record.FileIdentifier[0] == 0x00 || record.FileIdentifier[0] == 0x01 {
+				continue
 			}
 
 			entries = append(entries, &entry)
 
 			// Recursively walk directories
 			if record.IsDirectory() && !record.IsSpecial() {
-				if err := walk(record, fullPath); err != nil {
+				if err = walk(record, fullPath); err != nil {
 					return err
 				}
 			}
@@ -244,7 +249,7 @@ func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*di
 		visited[dir.LocationOfExtent] = true
 
 		// Read directory records from this LBA
-		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent)
+		dirRecords, err := p.ReadDirectoryRecords(dir.LocationOfExtent, dir.DataLength)
 		if err != nil {
 			return err
 		}
@@ -272,54 +277,66 @@ func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*di
 
 // ReadDirectoryRecords reads directory records from a given LBA (logical block address)
 // and processes Rock Ridge extensions if present.
-func (p *Parser) ReadDirectoryRecords(lba uint32) ([]*directory.DirectoryRecord, error) {
-	// Read a full 2048-byte sector from the given LBA
-	offset := int64(lba) * consts.ISO9660_SECTOR_SIZE
-	buf := make([]byte, consts.ISO9660_SECTOR_SIZE)
+func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32) ([]*directory.DirectoryRecord, error) {
 
+	sectorSize := consts.ISO9660_SECTOR_SIZE
+	offset := int64(lba) * int64(sectorSize)
+	totalBytes := int(dataLength)
+
+	buf := make([]byte, totalBytes)
 	_, err := p.r.ReadAt(buf, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory sector at LBA %d: %w", lba, err)
 	}
 
 	var records []*directory.DirectoryRecord
-	reader := bytes.NewReader(buf)
+	index := 0
+	sectorBoundary := sectorSize
 
-	for reader.Len() > 0 {
+	for index < totalBytes {
 		// Read length of this directory record (first byte)
-		var length byte
-		if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
-			return nil, fmt.Errorf("failed to read directory record length: %w", err)
-		}
+		length := buf[index]
 
-		// If length is zero, we've reached padding or the end of records.
+		// Stop at padding (zero-filled area)
 		if length == 0 {
-			break
+			// Move to the next sector boundary
+			nextSector := ((index / sectorSize) + 1) * sectorSize
+			if nextSector >= totalBytes {
+				break // End of directory data
+			}
+			index = nextSector // Align to next sector
+			continue
 		}
 
-		// Read the record data into a buffer
-		recordBuf := make([]byte, length)
-		recordBuf[0] = length // First byte already read
-		if _, err := io.ReadFull(reader, recordBuf[1:]); err != nil {
-			return nil, fmt.Errorf("failed to read directory record: %w", err)
+		// Ensure record does not cross sector boundary
+		if index+int(length) > sectorBoundary {
+			// Move to next sector and retry
+			index = sectorBoundary
+			sectorBoundary += sectorSize
+			continue
 		}
 
-		// Parse directory record from raw data
+		recordData := buf[index : index+int(length)]
 		dr := &directory.DirectoryRecord{}
-		err = dr.Unmarshal(recordBuf)
+		err = dr.Unmarshal(recordData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse directory record: %w", err)
 		}
 
 		// **Parse Rock Ridge extensions if present**
+		var rr *extensions.RockRidgeExtensions
 		if len(dr.SystemUse) > 0 {
-			rr, err := extensions.UnmarshalRockRidge(dr.SystemUse)
+			rr, err = extensions.UnmarshalRockRidge(dr.SystemUse)
 			if err == nil {
 				dr.RockRidge = rr
 			}
 		}
 
 		records = append(records, dr)
+
+		// Move to the next record
+		index += int(length)
+
 	}
 
 	return records, nil

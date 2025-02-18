@@ -80,6 +80,10 @@ func (d *SupplementaryVolumeDescriptor) HasRockRidge() bool {
 	return false
 }
 
+func (d *SupplementaryVolumeDescriptor) RootDirectory() *directory.DirectoryRecord {
+	return d.SupplementaryVolumeDescriptorBody.RootDirectoryRecord
+}
+
 // Marshal converts the entire SupplementaryVolumeDescriptor into a 2048-byte on-disk sector.
 func (d *SupplementaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {
 	var sector [consts.ISO9660_SECTOR_SIZE]byte

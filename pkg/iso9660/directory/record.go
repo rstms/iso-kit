@@ -12,7 +12,8 @@ type DirectoryRecord struct {
 	// Length Of Directory Record specifies the length of the directory record in bytes.
 	LengthOfDirectoryRecord uint8 `json:"length_of_directory_record"`
 	// Extended Attribute Record Length specifies the assigned Extended Attribute Record length if an Extended Attribute
-	// Record is recorded, otherwise it will be zero.
+	// Record is recorded, otherwise it will be zero. If this is non-zero then the Extended Attribute Record will need
+	// to be read from the extent before the file data
 	ExtendedAttributeRecordLength uint8 `json:"extended_attribute_record_length"`
 	// Location of Extent specifies the Logical Block Number of the first Logical Block allocated to the Extent.
 	//  | Encoding: BothByteOrder
@@ -83,6 +84,9 @@ type DirectoryRecord struct {
 
 // IsDirectory checks if the entry is a Directory
 func (dr *DirectoryRecord) IsDirectory() bool {
+	if dr.RockRidge != nil && dr.RockRidge.HasRockRidge() && dr.RockRidge.Permissions != nil {
+		return dr.RockRidge.Permissions.IsDir()
+	}
 	return dr.FileFlags.Directory
 }
 

@@ -28,10 +28,11 @@ type ISO interface {
 	GetEffectiveDateTime() time.Time
 
 	GetVolumeSize() uint32
+	RootDirectoryLocation() uint32
 
-	ListFiles() ([]filesystem.FileSystemEntry, error)
+	ListFiles() ([]*filesystem.FileSystemEntry, error)
+	ListDirectories() ([]*filesystem.FileSystemEntry, error)
 	ReadFile(path string) ([]byte, error)
-
 	AddFile(path string, data []byte) error
 	RemoveFile(path string) error
 

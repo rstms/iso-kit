@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"os"
 	"time"
 )
@@ -26,4 +27,8 @@ type FileSystemEntry struct {
 	CreateTime time.Time
 	// ModTime
 	ModTime time.Time
+	// RockRidge extended attributes
+	HasRockRidge bool `json:"has_rock_ridge"`
+	// Original DirectoryRecord
+	DirectoryRecord *directory.DirectoryRecord
 }
