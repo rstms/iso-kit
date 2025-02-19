@@ -34,6 +34,7 @@ import (
 //10.3 Level 3
 // At Level 3 no restrictions shall apply
 
+// Open opens an ISO9660 filesystem from the specified reader.
 func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 
 	// Set default open options
@@ -131,6 +132,7 @@ func Create(filename string, rootPath string, opts ...option.CreateOption) (*ISO
 	panic("implement me")
 }
 
+// ISO9660 represents an ISO9660 filesystem.
 type ISO9660 struct {
 	isoReader         io.ReaderAt
 	openOptions       *option.OpenOptions
@@ -145,6 +147,7 @@ type ISO9660 struct {
 	elTorito          *boot.ElTorito
 }
 
+// GetVolumeID returns the volume identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetVolumeID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -152,6 +155,7 @@ func (iso *ISO9660) GetVolumeID() string {
 	return iso.activeVD.VolumeIdentifier()
 }
 
+// GetSystemID returns the system identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetSystemID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -159,10 +163,12 @@ func (iso *ISO9660) GetSystemID() string {
 	return iso.activeVD.SystemIdentifier()
 }
 
+// GetVolumeSize returns the size of the ISO9660 filesystem.
 func (iso *ISO9660) GetVolumeSize() uint32 {
 	return iso.pvd.VolumeSpaceSize
 }
 
+// GetVolumeSetID returns the volume set identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetVolumeSetID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -170,6 +176,7 @@ func (iso *ISO9660) GetVolumeSetID() string {
 	return iso.activeVD.VolumeSetIdentifier()
 }
 
+// GetPublisherID returns the publisher identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetPublisherID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -177,6 +184,7 @@ func (iso *ISO9660) GetPublisherID() string {
 	return iso.activeVD.PublisherIdentifier()
 }
 
+// GetDataPreparerID returns the data preparer identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetDataPreparerID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -184,6 +192,7 @@ func (iso *ISO9660) GetDataPreparerID() string {
 	return iso.activeVD.DataPreparerIdentifier()
 }
 
+// GetApplicationID returns the application identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetApplicationID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -191,6 +200,7 @@ func (iso *ISO9660) GetApplicationID() string {
 	return iso.activeVD.ApplicationIdentifier()
 }
 
+// GetCopyrightID returns the copyright identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetCopyrightID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -198,6 +208,7 @@ func (iso *ISO9660) GetCopyrightID() string {
 	return iso.activeVD.CopyrightFileIdentifier()
 }
 
+// GetAbstractID returns the abstract identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetAbstractID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -205,6 +216,7 @@ func (iso *ISO9660) GetAbstractID() string {
 	return iso.activeVD.AbstractFileIdentifier()
 }
 
+// GetBibliographicID returns the bibliographic identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetBibliographicID() string {
 	if iso.activeVD == nil {
 		return ""
@@ -212,6 +224,7 @@ func (iso *ISO9660) GetBibliographicID() string {
 	return iso.activeVD.BibliographicFileIdentifier()
 }
 
+// GetCreationDateTime returns the creation date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetCreationDateTime() time.Time {
 	if iso.activeVD == nil {
 		return time.Time{}
@@ -219,6 +232,7 @@ func (iso *ISO9660) GetCreationDateTime() time.Time {
 	return iso.activeVD.VolumeCreationDateTime()
 }
 
+// GetModificationDateTime returns the modification date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetModificationDateTime() time.Time {
 	if iso.activeVD == nil {
 		return time.Time{}
@@ -226,6 +240,7 @@ func (iso *ISO9660) GetModificationDateTime() time.Time {
 	return iso.activeVD.VolumeModificationDateTime()
 }
 
+// GetExpirationDateTime returns the expiration date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetExpirationDateTime() time.Time {
 	if iso.activeVD == nil {
 		return time.Time{}
@@ -233,6 +248,7 @@ func (iso *ISO9660) GetExpirationDateTime() time.Time {
 	return iso.activeVD.VolumeExpirationDateTime()
 }
 
+// GetEffectiveDateTime returns the effective date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetEffectiveDateTime() time.Time {
 	if iso.activeVD == nil {
 		return time.Time{}
@@ -263,14 +279,17 @@ func (iso *ISO9660) HasElTorito() bool {
 	return iso.elTorito != nil
 }
 
+// RootDirectoryLocation returns the location of the root directory in the ISO9660 filesystem.
 func (iso *ISO9660) RootDirectoryLocation() uint32 {
 	return iso.activeVD.RootDirectory().LocationOfExtent
 }
 
+// ListBootEntries returns a list of all boot entries in the ISO9660 filesystem.
 func (iso *ISO9660) ListBootEntries() ([]*filesystem.FileSystemEntry, error) {
 	return iso.elTorito.BuildBootImageEntries()
 }
 
+// ListFiles returns a list of all files in the ISO9660 filesystem.
 func (iso *ISO9660) ListFiles() ([]*filesystem.FileSystemEntry, error) {
 	files := make([]*filesystem.FileSystemEntry, 0)
 	for _, entry := range iso.filesystemEntries {
@@ -282,6 +301,7 @@ func (iso *ISO9660) ListFiles() ([]*filesystem.FileSystemEntry, error) {
 	return files, nil
 }
 
+// ListDirectories returns a list of all directories in the ISO9660 filesystem.
 func (iso *ISO9660) ListDirectories() ([]*filesystem.FileSystemEntry, error) {
 	dirs := make([]*filesystem.FileSystemEntry, 0)
 	for _, entry := range iso.filesystemEntries {
@@ -424,6 +444,7 @@ func (iso *ISO9660) Save(writer io.Writer) error {
 	panic("implement me")
 }
 
+// Close closes the ISO9660 filesystem.
 func (iso *ISO9660) Close() error {
 	if f, ok := iso.isoReader.(*os.File); ok {
 		return f.Close()
