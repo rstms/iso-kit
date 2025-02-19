@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -353,6 +354,11 @@ func (iso *ISO9660) Extract(path string) error {
 			return fmt.Errorf("failed to create parent directories for %s: %w", outputPath, err)
 		}
 
+		// if the option to strip version info is enabled, enhanced and rr are not enabled then strip the version info
+		if iso.openOptions.StripVersionInfo && !iso.openOptions.RockRidgeEnabled && !iso.openOptions.PreferJoliet {
+			outputPath = strings.TrimRight(outputPath, ";1")
+		}
+
 		// Open output file for writing
 		outFile, err := os.Create(outputPath)
 		if err != nil {
@@ -393,7 +399,7 @@ func (iso *ISO9660) Extract(path string) error {
 
 			// Invoke progress callback
 			if iso.openOptions.ExtractionProgressCallback != nil {
-				iso.openOptions.ExtractionProgressCallback(entry.FullPath, bytesTransferred, size, i+1, totalFiles)
+				iso.openOptions.ExtractionProgressCallback(outputPath, bytesTransferred, size, i+1, totalFiles)
 			}
 		}
 
