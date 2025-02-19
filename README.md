@@ -78,3 +78,7 @@ Stay tuned for updates as we continue to expand functionality and refine the lib
 ## Test Coverage
 
 <img src="https://codecov.io/gh/bgrewell/iso-kit/graphs/sunburst.svg?token=D15C46IECF"/>
+
+## Development Notes
+
+ - **Comments** - Comments have been added to structs and other parts of the code where it makes sense to document the purpose of fields including details such as encoding.

@@ -3,14 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	iso "github.com/bgrewell/iso-kit"
-	"github.com/bgrewell/iso-kit/pkg/logging"
-	"github.com/bgrewell/iso-kit/pkg/options"
-	"os"
-	"time"
-
+	"github.com/bgrewell/iso-kit"
+	"github.com/bgrewell/iso-kit/pkg/option"
 	"github.com/theckman/yacspin"
 	"golang.org/x/term"
+	"os"
+	"time"
 )
 
 var (
@@ -30,7 +28,7 @@ func truncateString(input string, maxLength int) string {
 }
 
 // CreateProgressCallback returns a ProgressCallback that updates the spinner's message.
-func CreateProgressCallback(spinner *yacspin.Spinner) options.ProgressCallback {
+func CreateProgressCallback(spinner *yacspin.Spinner) option.ExtractionProgressCallback {
 	return func(
 		currentFilename string,
 		bytesTransferred int64,
@@ -113,6 +111,9 @@ func main() {
 	// Parse flags
 	flag.Parse()
 
+	_ = debug
+	_ = trace
+
 	// Setup callback for progress updates
 	spinner, err := InitializeSpinner()
 	if err != nil {
@@ -122,15 +123,6 @@ func main() {
 
 	// Create progress callback
 	progressCallback := CreateProgressCallback(spinner)
-
-	// Setup logging
-	level := logging.INFO
-	if *trace {
-		level = logging.TRACE
-	} else if *debug {
-		level = logging.DEBUG
-	}
-	log := logging.NewSimpleLogger(os.Stderr, level, true)
 
 	// Ensure we have an ISO path
 	if flag.NArg() < 1 {
@@ -153,14 +145,13 @@ func main() {
 	// Open the ISO image with the specified flags
 	img, err := iso.Open(
 		isoPath,
-		options.WithEltoritoEnabled(*bootImages),
-		options.WithRockRidgeEnabled(*rockRidge),
-		options.WithParseOnOpen(*enhancedVol),
-		options.WithBootFileLocation(*bootDir),
-		options.WithPreferEnhancedVD(*enhancedVol),
-		options.WithStripVersionInfo(*stripVer),
-		options.WithProgress(progressCallback),
-		options.WithLogger(log),
+		option.WithElToritoEnabled(*bootImages),
+		option.WithRockRidgeEnabled(*rockRidge),
+		option.WithParseOnOpen(*enhancedVol),
+		option.WithBootFileExtractLocation(*bootDir),
+		option.WithPreferJoliet(*enhancedVol),
+		option.WithStripVersionInfo(*stripVer),
+		option.WithExtractionProgress(progressCallback),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open ISO: %v\n", err)
@@ -171,7 +162,7 @@ func main() {
 	// Extract the contents
 	running := true
 	go func() {
-		err = img.Extract(*outputDir, *bootImages)
+		err = img.Extract(*outputDir)
 		if err != nil {
 			spinner.StopFailMessage(fmt.Sprintf("Failed to extract image: %v", err))
 			spinner.StopFail()
