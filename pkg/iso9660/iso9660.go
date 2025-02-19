@@ -2,9 +2,9 @@ package iso9660
 
 import (
 	"fmt"
+	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/boot"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/parser"
@@ -127,7 +127,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	return iso, nil
 }
 
-func Create(filename string, rootPath string, opts ...option.CreateOption) (*ISO9660, error) {
+func Create(filename string, opts ...option.CreateOption) (*ISO9660, error) {
 	//TODO implement me
 	panic("implement me")
 }

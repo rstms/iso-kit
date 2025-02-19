@@ -60,4 +60,10 @@ const (
 
 	// ISO9660 Filler 0x20 (space)
 	ISO9660_FILLER = " "
+
+	// Standard UDF Identifier
+	UDF_STD_IDENTIFIER = "BEA01"
+
+	// UDF default sector size.
+	UDF_SECTOR_SIZE = 2048
 )

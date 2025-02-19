@@ -3,8 +3,8 @@ package boot
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"io"
 	"os"
 	"path/filepath"

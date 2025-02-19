@@ -1,7 +1,7 @@
 package systemarea
 
 import (
-	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
+	"github.com/bgrewell/iso-kit/pkg/consts"
 )
 
 type SystemArea struct {

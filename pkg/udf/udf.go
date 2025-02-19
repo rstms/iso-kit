@@ -12,6 +12,11 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*UDF, error) {
 	panic("implement me")
 }
 
+func Create(filename string, opts ...option.CreateOption) (*UDF, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 type UDF struct {
 }
 

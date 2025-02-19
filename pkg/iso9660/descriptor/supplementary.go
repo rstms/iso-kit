@@ -3,8 +3,8 @@ package descriptor
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/helpers"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
 	"strings"

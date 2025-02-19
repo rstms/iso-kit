@@ -2,6 +2,7 @@ package iso
 
 import (
 	"errors"
+	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660"
 	"github.com/bgrewell/iso-kit/pkg/option"
@@ -48,29 +49,71 @@ type ISO interface {
 }
 
 func Open(filename string, opts ...option.OpenOption) (ISO, error) {
+
+	// Get file info
+	fileInfo, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// Open file
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 
+	// Check if file is large enough to be a valid ISO
+	if fileInfo.Size() < 16*consts.ISO9660_SECTOR_SIZE {
+		f.Close()
+		return nil, errors.New("file is too small to be a valid ISO9660 ISO")
+	}
+
 	// Read PVD header at sector 16 (offset 32768)
 	var header [6]byte
-	if _, err = f.ReadAt(header[:], 16*2048); err != nil {
+	if _, err = f.ReadAt(header[:], 16*consts.ISO9660_SECTOR_SIZE); err != nil {
 		f.Close()
 		return nil, err
 	}
 
 	// Detect ISO9660
-	if string(header[1:6]) == "CD001" {
+	if string(header[1:6]) == consts.ISO9660_STD_IDENTIFIER {
 		return iso9660.Open(f, opts...)
 	}
 
+	// Check if file is large enough to be a valid UDF ISO
+	if fileInfo.Size() < 256*consts.UDF_SECTOR_SIZE {
+		f.Close()
+		return nil, errors.New("file is too small to be a valid ISO9660 or UDF ISO")
+	}
+
 	// Read UDF anchor volume descriptor at sector 256 (offset 524288)
-	if _, err = f.ReadAt(header[:], 256*2048); err == nil {
-		if string(header[1:5]) == "BEA01" {
+	if _, err = f.ReadAt(header[:], 256*consts.UDF_SECTOR_SIZE); err == nil {
+		if string(header[1:5]) == consts.UDF_STD_IDENTIFIER {
 			return udf.Open(f, opts...)
 		}
 	}
 
 	return nil, errors.New("unsupported ISO format")
+}
+
+func Create(filename string, opts ...option.CreateOption) (ISO, error) {
+	// Set default option(s)
+	options := option.CreateOptions{
+		ISOType: option.ISO_TYPE_ISO9660,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	switch options.ISOType {
+	case option.ISO_TYPE_ISO9660:
+		return iso9660.Create(filename, opts...)
+	case option.ISO_TYPE_UDF:
+		return udf.Create(filename, opts...)
+	default:
+		return nil, errors.New("unsupported ISO type")
+	}
+
 }
