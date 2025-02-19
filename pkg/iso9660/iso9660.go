@@ -336,13 +336,16 @@ func (iso *ISO9660) Extract(path string) error {
 		return err
 	}
 
-	// Extract files
+	// Get list of files to extract
 	files, err := iso.ListFiles()
 	if err != nil {
 		return fmt.Errorf("failed to list files: %w", err)
 	}
-	for _, entry := range files {
 
+	totalFiles := len(files)
+
+	// Extract files
+	for i, entry := range files {
 		outputPath := filepath.Join(path, entry.FullPath)
 
 		// Ensure parent directories exist
@@ -350,22 +353,48 @@ func (iso *ISO9660) Extract(path string) error {
 			return fmt.Errorf("failed to create parent directories for %s: %w", outputPath, err)
 		}
 
-		// Open the output file for writing
+		// Open output file for writing
 		outFile, err := os.Create(outputPath)
 		if err != nil {
 			return fmt.Errorf("failed to create file %s: %w", outputPath, err)
 		}
 		defer outFile.Close()
 
-		// Read the file bytes from the ISO
-		data, err := entry.GetBytes()
-		if err != nil {
-			return fmt.Errorf("failed to read file data for %s: %w", entry.FullPath, err)
-		}
+		// Stream the file from the ISO
+		startOffset := int64(entry.Location) * int64(consts.ISO9660_SECTOR_SIZE)
+		size := int64(entry.Size)
+		bufferSize := 4096 // 4KB buffer
+		buffer := make([]byte, bufferSize)
 
-		// Write data to the output file
-		if _, err := outFile.Write(data); err != nil {
-			return fmt.Errorf("failed to write file %s: %w", outputPath, err)
+		var bytesTransferred int64
+		for bytesTransferred < size {
+			// Read chunk from ISO
+			bytesToRead := bufferSize
+			if remaining := size - bytesTransferred; remaining < int64(bufferSize) {
+				bytesToRead = int(remaining)
+			}
+
+			n, err := entry.ReadAt(buffer[:bytesToRead], startOffset+bytesTransferred)
+			if err != nil && err != io.EOF {
+				return fmt.Errorf("failed to read file %s from ISO: %w", entry.FullPath, err)
+			}
+
+			if n == 0 {
+				break // Reached EOF
+			}
+
+			// Write chunk to file
+			if _, err := outFile.Write(buffer[:n]); err != nil {
+				return fmt.Errorf("failed to write to file %s: %w", outputPath, err)
+			}
+
+			// Update bytes transferred
+			bytesTransferred += int64(n)
+
+			// Invoke progress callback
+			if iso.openOptions.ExtractionProgressCallback != nil {
+				iso.openOptions.ExtractionProgressCallback(entry.FullPath, bytesTransferred, size, i+1, totalFiles)
+			}
 		}
 
 		// Set correct file permissions

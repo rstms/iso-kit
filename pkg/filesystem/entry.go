@@ -65,6 +65,11 @@ func (fse *FileSystemEntry) DirectoryRecord() *directory.DirectoryRecord {
 	return fse.record
 }
 
+// ReadAt is a wrapper that allows the FileSystemEntry to be used as an io.ReaderAt
+func (fse *FileSystemEntry) ReadAt(p []byte, off int64) (n int, err error) {
+	return fse.reader.ReadAt(p, off)
+}
+
 // Extract the entry to disk
 func (fse *FileSystemEntry) ExtractToDisk(outputDir string) error {
 	outputPath := filepath.Join(outputDir, fse.FullPath)
