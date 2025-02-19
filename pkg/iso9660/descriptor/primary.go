@@ -11,6 +11,24 @@ import (
 	"time"
 )
 
+//10.1 Level 1
+// At Level 1 the following restrictions shall apply to a volume identified by a Primary Volume Descriptor or by a
+// Supplementary Volume Descriptor:
+//  - each file shall consist of only one File Section;
+//  - a File Name shall not contain more than eight d-characters or eight d1-characters;
+//  - a File Name Extension shall not contain more than three d-characters or three d1-characters;
+//  - a Directory Identifier shall not contain more than eight d-characters or eight d1-characters.
+//
+// At Level 1 the following restrictions shall apply to a volume identified by an Enhanced Volume Descriptor:
+//  - each file shall consist of only one File Section.
+
+//10.2 Level 2
+// At Level 2 the following restriction shall apply:
+//  - each file shall consist of only one File Section.
+
+//10.3 Level 3
+// At Level 3 no restrictions shall apply
+
 const (
 	// Reserved for future use field from BP 1396 to 2048
 	PRIMARY_RESERVED_FIELD2_SIZE        = 653

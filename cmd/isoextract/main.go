@@ -1,18 +1,15 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"github.com/bgrewell/iso-kit"
 	"github.com/bgrewell/iso-kit/pkg/option"
+	"github.com/bgrewell/iso-kit/pkg/version"
+	"github.com/bgrewell/usage"
 	"github.com/theckman/yacspin"
 	"golang.org/x/term"
 	"os"
 	"time"
-)
-
-var (
-	version = "dev"
 )
 
 // truncateString truncates the input string to the specified max length.
@@ -94,25 +91,57 @@ func InitializeSpinner() (*yacspin.Spinner, error) {
 }
 
 func main() {
-	// Logging level flags
-	debug := flag.Bool("v", false, "Enable verbose (debug) logging")
-	trace := flag.Bool("vv", false, "Enable trace logging")
+	// Initialize usage handler
+	u := usage.NewUsage(
+		usage.WithApplicationVersion(version.Version()),
+		usage.WithApplicationBranch(version.Branch()),
+		usage.WithApplicationBuildDate(version.Date()),
+		usage.WithApplicationCommitHash(version.Revision()),
+		usage.WithApplicationName("isoextract"),
+		usage.WithApplicationDescription("isoextract is a command-line tool for extracting files and boot images from ISO9660 images, including support for Rock Ridge, Joliet, and El Torito extensions."),
+	)
 
-	// Extraction options
-	bootImages := flag.Bool("boot", false, "Extract boot images (El Torito)")
-	rockRidge := flag.Bool("rockridge", true, "Enable Rock Ridge support")
-	enhancedVol := flag.Bool("enhanced", true, "Use Enhanced Volume Descriptors")
-	stripVer := flag.Bool("strip", true, "Strip version info from filenames")
+	// Define CLI options
+	help := u.AddBooleanOption("h", "help", false, "Show this help message", "optional", nil)
+	verbose := u.AddBooleanOption("v", "verbose", false, "Enable verbose (debug) logging", "", nil)
+	trace := u.AddBooleanOption("vv", "trace", false, "Enable trace logging", "", nil)
+	bootImages := u.AddBooleanOption("b", "boot", false, "Extract boot images (El Torito)", "", nil)
+	rockRidge := u.AddBooleanOption("rr", "rockridge", true, "Enable Rock Ridge support", "", nil)
+	enhancedVol := u.AddBooleanOption("eh", "enhanced", true, "Use Enhanced Volume Descriptors", "", nil)
+	stripVer := u.AddBooleanOption("s", "strip", true, "Strip version info from filenames", "", nil)
 
-	// Output directory
-	outputDir := flag.String("o", "./extracted", "Output directory for extracted files")
-	bootDir := flag.String("bootdir", "[BOOT]", "Output directory for boot images")
+	// Output directories
+	outputDir := u.AddStringOption("o", "output", "./extracted", "Output directory for extracted files", "", nil)
+	bootDir := u.AddStringOption("bd", "bootdir", "[BOOT]", "Output directory for boot images", "", nil)
 
-	// Parse flags
-	flag.Parse()
+	// ISO file path argument
+	isoPath := u.AddArgument(1, "iso-path", "Path to the ISO file", "")
 
-	_ = debug
-	_ = trace
+	// Parse arguments
+	parsed := u.Parse()
+	if !parsed {
+		u.PrintError(fmt.Errorf("failed to parse arguments"))
+		os.Exit(1)
+	}
+
+	// Handle help flag
+	if *help {
+		u.PrintUsage()
+		os.Exit(0)
+	}
+
+	// Ensure an ISO path was provided
+	if isoPath == nil || *isoPath == "" {
+		u.PrintError(fmt.Errorf("path to the ISO file must be provided"))
+		os.Exit(1)
+	}
+
+	// Setup logging level
+	if *trace {
+		fmt.Println("Trace logging enabled")
+	} else if *verbose {
+		fmt.Println("Verbose logging enabled")
+	}
 
 	// Setup callback for progress updates
 	spinner, err := InitializeSpinner()
@@ -124,27 +153,9 @@ func main() {
 	// Create progress callback
 	progressCallback := CreateProgressCallback(spinner)
 
-	// Ensure we have an ISO path
-	if flag.NArg() < 1 {
-		fmt.Println("isoextract v" + version)
-		fmt.Println("Usage: isoextract [options] <path-to-iso>")
-		fmt.Println("  -v               Enable verbose (debug) logging")
-		fmt.Println("  -vv              Enable trace logging")
-		fmt.Println("  -boot            Extract boot images (El Torito)")
-		fmt.Println("  -rockridge       Enable Rock Ridge support (default: true)")
-		fmt.Println("  -enhanced        Use Enhanced Volume Descriptors (default: true)")
-		fmt.Println("  -strip           Strip version info from filenames (default: true)")
-		fmt.Println("  -o <directory>   Output directory (default './extracted')")
-		fmt.Println("  -bootdir <dir>   Output directory for boot images (default './extracted/boot')")
-		os.Exit(1)
-	}
-
-	// Grab the ISO path from arguments
-	isoPath := flag.Arg(0)
-
 	// Open the ISO image with the specified flags
 	img, err := iso.Open(
-		isoPath,
+		*isoPath,
 		option.WithElToritoEnabled(*bootImages),
 		option.WithRockRidgeEnabled(*rockRidge),
 		option.WithParseOnOpen(*enhancedVol),

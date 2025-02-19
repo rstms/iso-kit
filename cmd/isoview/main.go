@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/bgrewell/iso-kit"
+	"github.com/bgrewell/iso-kit/pkg/version"
 	"github.com/bgrewell/usage"
 	"os"
 )
@@ -129,7 +130,15 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 
 func main() {
 
-	u := usage.NewUsage()
+	u := usage.NewUsage(
+		usage.WithApplicationVersion(version.Version()),
+		usage.WithApplicationBranch(version.Branch()),
+		usage.WithApplicationBuildDate(version.Date()),
+		usage.WithApplicationCommitHash(version.Revision()),
+		usage.WithApplicationName("isoview"),
+		usage.WithApplicationDescription("isoview is a command-line tool for inspecting ISO9660 images, including Rock Ridge, Joliet, and El Torito extensions. It provides detailed volume information, lists files and directories, decodes long filenames, and identifies bootable images."),
+	)
+
 	help := u.AddBooleanOption("h", "help", false, "Show this help message", "optional", nil)
 	verbose := u.AddBooleanOption("v", "verbose", false, "Print verbose output", "", nil)
 	path := u.AddArgument(1, "iso-path", "Path to the file within the ISO to read", "")

@@ -9,7 +9,8 @@ const (
 )
 
 type CreateOptions struct {
-	ISOType ISOType
+	ISOType  ISOType
+	Preparer string
 }
 
 type CreateOption func(*CreateOptions)
@@ -17,5 +18,11 @@ type CreateOption func(*CreateOptions)
 func WithISOType(isoType ISOType) CreateOption {
 	return func(o *CreateOptions) {
 		o.ISOType = isoType
+	}
+}
+
+func WithPreparerID(preparer string) CreateOption {
+	return func(o *CreateOptions) {
+		o.Preparer = preparer
 	}
 }

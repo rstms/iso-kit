@@ -18,22 +18,6 @@ import (
 	"time"
 )
 
-//10.1 Level 1
-// At Level 1 the following restrictions shall apply to a volume identified by a Primary Volume Descriptor or by a
-// Supplementary Volume Descriptor:
-//  - each file shall consist of only one File Section;
-//  - a File Name shall not contain more than eight d-characters or eight d1-characters;
-//  - a File Name Extension shall not contain more than three d-characters or three d1-characters;
-//  - a Directory Identifier shall not contain more than eight d-characters or eight d1-characters.
-//
-// At Level 1 the following restrictions shall apply to a volume identified by an Enhanced Volume Descriptor:
-//  - each file shall consist of only one File Section.
-//10.2 Level 2
-// At Level 2 the following restriction shall apply:
-//  - each file shall consist of only one File Section.
-//10.3 Level 3
-// At Level 3 no restrictions shall apply
-
 // Open opens an ISO9660 filesystem from the specified reader.
 func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 
@@ -128,8 +112,44 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 }
 
 func Create(filename string, opts ...option.CreateOption) (*ISO9660, error) {
-	//TODO implement me
-	panic("implement me")
+
+	// Set default create options
+	createOptions := &option.CreateOptions{
+		Preparer: "iso-kit",
+	}
+
+	for _, opt := range opts {
+		opt(createOptions)
+	}
+
+	// 1: Create system area which is 16 sectors. Boot stuff goes here??
+	sa := systemarea.SystemArea{}
+
+	// 2: Create volume descriptor set
+	//    2.1: Create primary volume descriptor
+	pvd := descriptor.PrimaryVolumeDescriptor{}
+	//    2.2: Create supplementary volume descriptor(s)
+	svd := descriptor.SupplementaryVolumeDescriptor{}
+	//    2.3: Create volume partition descriptor(s)
+	//    2.4: Create boot record(s)
+	br := descriptor.BootRecordDescriptor{}
+	//    2.5: Create termination record
+
+	// 3: Create path tables
+
+	// 4: Create directory records
+
+	iso := &ISO9660{
+		isoReader:     nil,
+		openOptions:   nil,
+		createOptions: createOptions,
+		systemArea:    sa,
+		bootRecord:    &br,
+		pvd:           &pvd,
+		svds:          []*descriptor.SupplementaryVolumeDescriptor{&svd},
+	}
+
+	return iso, nil
 }
 
 // ISO9660 represents an ISO9660 filesystem.
