@@ -44,6 +44,7 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 	// Counters
 	rrEnabled := 0
 	symlinks := 0
+	totalSize := uint64(0)
 
 	// Get file system entries
 	files, err := i.ListFiles()
@@ -60,8 +61,11 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 		if entry.HasRockRidge {
 			rrEnabled++
 		}
-		if entry.DirectoryRecord.RockRidge != nil && entry.DirectoryRecord.RockRidge.SymlinkTarget != nil {
+		if entry.DirectoryRecord().RockRidge != nil && entry.DirectoryRecord().RockRidge.SymlinkTarget != nil {
 			symlinks++
+		}
+		if !entry.IsDir {
+			totalSize += uint64(entry.Size)
 		}
 	}
 
@@ -80,10 +84,10 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 		fmt.Printf("Publisher: %s\n", i.GetPublisherID())
 	}
 
-	fmt.Printf("Volume Size: %d sectors (%d MB)\n", i.GetVolumeSize(), (-1*2048)/1024/1024)
+	fmt.Printf("Volume Size: %d sectors\n", i.GetVolumeSize())
 	fmt.Printf("Total Files: %d\n", len(files))
 	fmt.Printf("Total Directories: %d\n", len(dirs))
-	fmt.Printf("Total Size: %d bytes (%.2f MB)\n", -1, float64(-1)/1024/1024)
+	fmt.Printf("Total Size: %d bytes (%.2f MB)\n", totalSize, float64(totalSize)/1024/1024)
 
 	if verbose {
 		// Verbose output with additional metadata

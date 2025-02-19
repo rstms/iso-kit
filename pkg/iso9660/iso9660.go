@@ -1,6 +1,7 @@
 package iso9660
 
 import (
+	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/boot"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/consts"
@@ -11,6 +12,8 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/option"
 	"github.com/go-logr/logr"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -41,6 +44,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		PreloadDir:                 true,
 		StripVersionInfo:           true,
 		RockRidgeEnabled:           true,
+		ElToritoEnabled:            true,
 		PreferJoliet:               false,
 		BootFileExtractLocation:    "[BOOT]",
 		ExtractionProgressCallback: emptyCallback,
@@ -61,7 +65,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	}
 
 	// Create a parser
-	p := parser.NewParser(isoReader)
+	p := parser.NewParser(isoReader, openOptions)
 
 	// Read the boot record
 	bootRecord, err := p.GetBootRecord()
@@ -71,7 +75,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 
 	// Check for El-Torito boot record
 	var et *boot.ElTorito
-	if boot.IsElTorito(bootRecord.BootSystemIdentifier) {
+	if boot.IsElTorito(bootRecord.BootSystemIdentifier) && openOptions.ElToritoEnabled {
 		et, err = p.GetElTorito(bootRecord)
 		if err != nil {
 			return nil, err
@@ -155,7 +159,7 @@ func (iso *ISO9660) GetSystemID() string {
 }
 
 func (iso *ISO9660) GetVolumeSize() uint32 {
-	return 0
+	return iso.pvd.VolumeSpaceSize
 }
 
 func (iso *ISO9660) GetVolumeSetID() string {
@@ -303,12 +307,91 @@ func (iso *ISO9660) RemoveFile(path string) error {
 	panic("implement me")
 }
 
+// CreateDirectories creates all directories from the ISO in the specified path.
+func (iso *ISO9660) CreateDirectories(path string) error {
+	// Ensure output directory exists
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory %s: %w", path, err)
+	}
+
+	// Iterate over directory FileSystemEntries and create directories
+	dirs, err := iso.ListDirectories()
+	if err != nil {
+		return fmt.Errorf("failed to list directories: %w", err)
+	}
+	for _, entry := range dirs {
+		dirPath := filepath.Join(path, entry.FullPath)
+		if err := os.MkdirAll(dirPath, entry.Mode); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+		}
+	}
+
+	return nil
+}
+
+// Extract extracts all files and directories from the ISO to the specified path.
+func (iso *ISO9660) Extract(path string) error {
+	// Create all directories first
+	if err := iso.CreateDirectories(path); err != nil {
+		return err
+	}
+
+	// Extract files
+	files, err := iso.ListFiles()
+	if err != nil {
+		return fmt.Errorf("failed to list files: %w", err)
+	}
+	for _, entry := range files {
+
+		outputPath := filepath.Join(path, entry.FullPath)
+
+		// Ensure parent directories exist
+		if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directories for %s: %w", outputPath, err)
+		}
+
+		// Open the output file for writing
+		outFile, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", outputPath, err)
+		}
+		defer outFile.Close()
+
+		// Read the file bytes from the ISO
+		data, err := entry.GetBytes()
+		if err != nil {
+			return fmt.Errorf("failed to read file data for %s: %w", entry.FullPath, err)
+		}
+
+		// Write data to the output file
+		if _, err := outFile.Write(data); err != nil {
+			return fmt.Errorf("failed to write file %s: %w", outputPath, err)
+		}
+
+		// Set correct file permissions
+		if err := os.Chmod(outputPath, entry.Mode); err != nil {
+			return fmt.Errorf("failed to set permissions on %s: %w", outputPath, err)
+		}
+
+		// Set timestamps
+		if !entry.ModTime.IsZero() {
+			if err := os.Chtimes(outputPath, entry.ModTime, entry.ModTime); err != nil {
+				return fmt.Errorf("failed to set timestamps on %s: %w", outputPath, err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (iso *ISO9660) Save(writer io.Writer) error {
 	//TODO implement me
 	panic("implement me")
 }
 
 func (iso *ISO9660) Close() error {
-	//TODO implement me
-	panic("implement me")
+	if f, ok := iso.isoReader.(*os.File); ok {
+		return f.Close()
+	}
+	return nil
 }

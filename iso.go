@@ -36,6 +36,8 @@ type ISO interface {
 	ReadFile(path string) ([]byte, error)
 	AddFile(path string, data []byte) error
 	RemoveFile(path string) error
+	CreateDirectories(path string) error
+	Extract(path string) error
 
 	HasJoliet() bool
 	HasRockRidge() bool

@@ -10,15 +10,20 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/extensions"
+	"github.com/bgrewell/iso-kit/pkg/option"
 	"io"
 )
 
-func NewParser(r io.ReaderAt) *Parser {
-	return &Parser{r: r}
+func NewParser(reader io.ReaderAt, options *option.OpenOptions) *Parser {
+	return &Parser{
+		reader:  reader,
+		options: options,
+	}
 }
 
 type Parser struct {
-	r io.ReaderAt
+	reader  io.ReaderAt
+	options *option.OpenOptions
 }
 
 // GetBootRecord reads and validates the ISO9660 boot record.
@@ -30,7 +35,7 @@ func (p *Parser) GetBootRecord() (*descriptor.BootRecordDescriptor, error) {
 
 	for {
 		offset := sector * int64(sectorSize)
-		n, err := p.r.ReadAt(buf[:], offset)
+		n, err := p.reader.ReadAt(buf[:], offset)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +79,7 @@ func (p *Parser) GetElTorito(bootRecord *descriptor.BootRecordDescriptor) (*boot
 	catalogIndex := binary.LittleEndian.Uint32(bootRecord.BootSystemUse[:4])
 	catalogOffset := int64(catalogIndex) * consts.ISO9660_SECTOR_SIZE
 	catalogBytes := [consts.ISO9660_SECTOR_SIZE]byte{}
-	if _, err := p.r.ReadAt(catalogBytes[:], catalogOffset); err != nil {
+	if _, err := p.reader.ReadAt(catalogBytes[:], catalogOffset); err != nil {
 		return nil, err
 	}
 	et := &boot.ElTorito{}
@@ -87,7 +92,7 @@ func (p *Parser) GetElTorito(bootRecord *descriptor.BootRecordDescriptor) (*boot
 // GetPrimaryVolumeDescriptor reads and validates the ISO9660 PVD.
 func (p *Parser) GetPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescriptor, error) {
 	var buf [2048]byte
-	_, err := p.r.ReadAt(buf[:], consts.ISO9660_SYSTEM_AREA_SECTORS*consts.ISO9660_SECTOR_SIZE)
+	_, err := p.reader.ReadAt(buf[:], consts.ISO9660_SYSTEM_AREA_SECTORS*consts.ISO9660_SECTOR_SIZE)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +133,7 @@ func (p *Parser) GetSupplementaryVolumeDescriptors() ([]*descriptor.Supplementar
 
 	for {
 		offset := sector * int64(sectorSize)
-		n, err := p.r.ReadAt(buf[:], offset)
+		n, err := p.reader.ReadAt(buf[:], offset)
 		if err != nil {
 			return nil, err
 		}
@@ -205,27 +210,27 @@ func (p *Parser) BuildFileSystemEntries(rootDir *directory.DirectoryRecord, Rock
 			creationTime, modificationTime := record.GetTimestamps(RockRidgeEnabled)
 
 			// Create FileSystemEntry
-			entry := filesystem.FileSystemEntry{
-				Name:            record.GetBestName(RockRidgeEnabled),
-				FullPath:        fullPath,
-				IsDir:           record.IsDirectory(),
-				Size:            record.DataLength,
-				Location:        record.LocationOfExtent,
-				Mode:            permissions,
-				CreateTime:      creationTime,
-				ModTime:         modificationTime,
-				UID:             uid,
-				GID:             gid,
-				HasRockRidge:    record.RockRidge != nil,
-				DirectoryRecord: record,
-			}
+			entry := filesystem.NewFileSystemEntry(
+				record.GetBestName(RockRidgeEnabled),
+				fullPath,
+				record.IsDirectory(),
+				record.DataLength,
+				record.LocationOfExtent,
+				uid,
+				gid,
+				permissions,
+				creationTime,
+				modificationTime,
+				record,
+				p.reader,
+			)
 
 			// Filter out root and parent entries4
 			if len(record.FileIdentifier) == 0 || record.FileIdentifier[0] == 0x00 || record.FileIdentifier[0] == 0x01 {
 				continue
 			}
 
-			entries = append(entries, &entry)
+			entries = append(entries, entry)
 
 			// Recursively walk directories
 			if record.IsDirectory() && !record.IsSpecial() {
@@ -300,7 +305,7 @@ func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32, joliet bool
 	totalBytes := int(dataLength)
 
 	buf := make([]byte, totalBytes)
-	_, err := p.r.ReadAt(buf, offset)
+	_, err := p.reader.ReadAt(buf, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory sector at LBA %d: %w", lba, err)
 	}

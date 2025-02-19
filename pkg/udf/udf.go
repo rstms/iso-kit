@@ -135,6 +135,14 @@ func (U UDF) RemoveFile(path string) error {
 	panic("implement me")
 }
 
+func (U UDF) CreateDirectories(path string) error {
+	panic("implement me")
+}
+
+func (U UDF) Extract(path string) error {
+	panic("implement me")
+}
+
 func (U UDF) Save(writer io.Writer) error {
 	//TODO implement me
 	panic("implement me")

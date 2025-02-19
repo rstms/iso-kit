@@ -25,6 +25,7 @@ type OpenOptions struct {
 	PreferJoliet               bool
 	StripVersionInfo           bool
 	RockRidgeEnabled           bool
+	ElToritoEnabled            bool
 	BootFileExtractLocation    string
 	ExtractionProgressCallback ExtractionProgressCallback
 	Logger                     logr.Logger
@@ -90,6 +91,12 @@ func WithPreferJoliet(preferJoliet bool) OpenOption {
 func WithRockRidgeEnabled(rockRidgeEnabled bool) OpenOption {
 	return func(o *OpenOptions) {
 		o.RockRidgeEnabled = rockRidgeEnabled
+	}
+}
+
+func WithElToritoEnabled(elToritoEnabled bool) OpenOption {
+	return func(o *OpenOptions) {
+		o.ElToritoEnabled = elToritoEnabled
 	}
 }
 
