@@ -3,6 +3,7 @@ package encoding
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 	"unicode/utf16"
 )
@@ -222,10 +223,10 @@ func UnmarshalRecordingDateTime(b [7]byte) (time.Time, error) {
 	return time.Date(year, month, day, hour, minute, second, 0, loc), nil
 }
 
-// DecodeUCS2BigEndian converts a UCS-2 Big-Endian encoded string to a Go (UTF-8) string.
+// DecodeUCS2BigEndian converts a UCS-2 Big-Endian encoded byte slice to a Go (UTF-8) string.
 func DecodeUCS2BigEndian(ucs2 []byte) string {
-	if len(ucs2)%2 != 0 {
-		return "" // Invalid UCS2 input
+	if len(ucs2) < 2 {
+		return "" // Nothing to decode
 	}
 
 	utf16Slice := make([]uint16, len(ucs2)/2)
@@ -233,10 +234,11 @@ func DecodeUCS2BigEndian(ucs2 []byte) string {
 		utf16Slice[i] = uint16(ucs2[2*i])<<8 | uint16(ucs2[2*i+1])
 	}
 
+	// Decode into runes
 	runes := utf16.Decode(utf16Slice)
 
-	s := string(runes)
-	return s
+	// Convert to string and trim trailing nulls
+	return strings.TrimRight(string(runes), "\x00")
 }
 
 // EncodeUCS2BigEndian converts a Go (UTF-8) string into a UTF-16

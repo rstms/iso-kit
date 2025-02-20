@@ -608,18 +608,31 @@ func (iso *ISO9660) Save(writer io.WriterAt) error {
 	saOffset := int64(0)
 
 	// Calculate offsets for descriptors
-	pvdOffset := saOffset + int64(consts.ISO9660_SYSTEM_AREA_SECTORS*sectorSize)
-	bootOffset := pvdOffset + sectorSize
-	svdOffset := bootOffset + sectorSize
-	ptvdOffset := svdOffset + (int64(len(iso.svds)) * sectorSize)
-	termOffset := ptvdOffset + sectorSize
+	pvdSize := sectorSize
+	bootSize := int64(0)
+	if iso.bootRecord != nil {
+		bootSize = sectorSize
+	}
+	svdSize := int64(len(iso.svds)) * sectorSize
+	ptvdSize := int64(len(iso.partitionvds)) * sectorSize
+
+	pvdOffset := saOffset + consts.ISO9660_SYSTEM_AREA_SECTORS*sectorSize
+	bootOffset := pvdOffset + pvdSize
+	svdOffset := bootOffset + bootSize
+	ptvdOffset := svdOffset + svdSize
+	termOffset := ptvdOffset + ptvdSize
 
 	type descriptorSetEntry struct {
 		descriptor descriptor.VolumeDescriptor
 		offset     int64
 	}
 	descriptorSet := []*descriptorSetEntry{
-		//{descriptor: iso.pvd, offset: pvdOffset},
+		{descriptor: iso.pvd, offset: pvdOffset},
+	}
+	if iso.bootRecord != nil {
+		descriptorSet = append(descriptorSet,
+			&descriptorSetEntry{descriptor: iso.bootRecord, offset: bootOffset},
+		)
 	}
 	for i, svd := range iso.svds {
 		descriptorSet = append(descriptorSet,
@@ -631,25 +644,11 @@ func (iso *ISO9660) Save(writer io.WriterAt) error {
 			&descriptorSetEntry{descriptor: ptvd, offset: ptvdOffset + int64(i)*sectorSize},
 		)
 	}
-	if iso.bootRecord != nil {
-		descriptorSet = append(descriptorSet,
-			&descriptorSetEntry{descriptor: iso.bootRecord, offset: bootOffset},
-		)
-	}
 	descriptorSet = append(descriptorSet,
 		&descriptorSetEntry{descriptor: descriptor.NewVolumeDescriptorSetTerminator(), offset: termOffset})
 
 	// Write system area
 	_, err := writer.WriteAt(iso.systemArea.Contents[:], 0)
-	if err != nil {
-		return err
-	}
-
-	pvdBytes, err := iso.pvd.Marshal()
-	if err != nil {
-		return err
-	}
-	_, err = writer.WriteAt(pvdBytes[:], pvdOffset)
 	if err != nil {
 		return err
 	}
@@ -873,8 +872,15 @@ func writeDescriptor(writer io.WriterAt, descriptor descriptor.VolumeDescriptor,
 		return err
 	}
 
-	_, err = writer.WriteAt(data[:], offset)
-	return err
+	n, err := writer.WriteAt(data[:], offset)
+	if err != nil {
+		return err
+	}
+	if n != len(data) {
+		return errors.New("failed to write descriptor")
+	}
+
+	return nil
 }
 
 func writePathTable(writer io.Writer, location uint32, littleEndian bool) error {

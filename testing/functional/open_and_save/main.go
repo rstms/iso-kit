@@ -62,6 +62,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("Failed to create temporary file: %s\n", err)
 	}
+
 	if *rm {
 		defer os.Remove(o.Name())
 	} else {

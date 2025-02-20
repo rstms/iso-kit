@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
-	"github.com/bgrewell/iso-kit/pkg/helpers"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
 	"strings"
@@ -277,14 +276,20 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	data[offset] = svdb.VolumeFlags
 	offset++
 
-	// 2. systemIdentifier: 32 bytes.
-	sysID := helpers.PadString(svdb.SystemIdentifier, 32)
-	copy(data[offset:offset+32], sysID)
+	// 2. systemIdentifier: 32 bytes (UCS2).
+	sysID := encoding.EncodeUCS2BigEndian(svdb.SystemIdentifier)
+	if len(sysID) > 32 {
+		return data, fmt.Errorf("systemIdentifier (%d bytes) exceeds 32 bytes after UCS2 encoding", len(sysID))
+	}
+	copy(data[offset:offset+len(sysID)], sysID)
 	offset += 32
 
-	// 3. volumeIdentifier: 32 bytes.
-	volID := helpers.PadString(svdb.VolumeIdentifier, 32)
-	copy(data[offset:offset+32], volID)
+	// 3. volumeIdentifier: 32 bytes (UCS2).
+	volID := encoding.EncodeUCS2BigEndian(svdb.VolumeIdentifier)
+	if len(volID) > 32 {
+		return data, fmt.Errorf("volumeIdentifier (%d bytes) exceeds 32 bytes after UCS2 encoding", len(volID))
+	}
+	copy(data[offset:offset+len(volID)], volID)
 	offset += 32
 
 	// 4. unusedField1: 8 bytes.
@@ -346,39 +351,60 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	copy(data[offset:offset+34], rdBytes)
 	offset += 34
 
-	// 16. volumeSetIdentifier: 128 bytes.
-	vsi := helpers.PadString(svdb.VolumeSetIdentifier, 128)
-	copy(data[offset:offset+128], vsi)
+	// 16. volumeSetIdentifier: 128 bytes (UCS2).
+	vsi := encoding.EncodeUCS2BigEndian(svdb.VolumeSetIdentifier)
+	if len(vsi) > 128 {
+		return data, fmt.Errorf("volumeSetIdentifier exceeds 128 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(vsi)], vsi)
 	offset += 128
 
-	// 17. publisherIdentifier: 128 bytes.
-	pubID := helpers.PadString(svdb.PublisherIdentifier, 128)
-	copy(data[offset:offset+128], pubID)
+	// 17. publisherIdentifier: 128 bytes (UCS2).
+	pubID := encoding.EncodeUCS2BigEndian(svdb.PublisherIdentifier)
+	if len(pubID) > 128 {
+		return data, fmt.Errorf("publisherIdentifier exceeds 128 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(pubID)], pubID)
 	offset += 128
 
-	// 18. dataPreparerIdentifier: 128 bytes.
-	dpID := helpers.PadString(svdb.DataPreparerIdentifier, 128)
-	copy(data[offset:offset+128], dpID)
+	// 18. dataPreparerIdentifier: 128 bytes (UCS2).
+	dpID := encoding.EncodeUCS2BigEndian(svdb.DataPreparerIdentifier)
+	if len(dpID) > 128 {
+		return data, fmt.Errorf("dataPreparerIdentifier exceeds 128 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(dpID)], dpID)
 	offset += 128
 
-	// 19. applicationIdentifier: 128 bytes.
-	appID := helpers.PadString(svdb.ApplicationIdentifier, 128)
-	copy(data[offset:offset+128], appID)
+	// 19. applicationIdentifier: 128 bytes (UCS2).
+	appID := encoding.EncodeUCS2BigEndian(svdb.ApplicationIdentifier)
+	if len(appID) > 128 {
+		return data, fmt.Errorf("applicationIdentifier exceeds 128 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(appID)], appID)
 	offset += 128
 
-	// 20. copyrightFileIdentifier: 37 bytes.
-	cfID := helpers.PadString(svdb.CopyrightFileIdentifier, 37)
-	copy(data[offset:offset+37], cfID)
+	// 20. copyrightFileIdentifier: 37 bytes (UCS2).
+	cfID := encoding.EncodeUCS2BigEndian(svdb.CopyrightFileIdentifier)
+	if len(cfID) > 37 {
+		return data, fmt.Errorf("copyrightFileIdentifier exceeds 37 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(cfID)], cfID)
 	offset += 37
 
-	// 21. abstractFileIdentifier: 37 bytes.
-	afID := helpers.PadString(svdb.AbstractFileIdentifier, 37)
-	copy(data[offset:offset+37], afID)
+	// 21. abstractFileIdentifier: 37 bytes (UCS2).
+	afID := encoding.EncodeUCS2BigEndian(svdb.AbstractFileIdentifier)
+	if len(afID) > 37 {
+		return data, fmt.Errorf("abstractFileIdentifier exceeds 37 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(afID)], afID)
 	offset += 37
 
-	// 22. bibliographicFileIdentifier: 37 bytes.
-	bfID := helpers.PadString(svdb.BibliographicFileIdentifier, 37)
-	copy(data[offset:offset+37], bfID)
+	// 22. bibliographicFileIdentifier: 37 bytes (UCS2).
+	bfID := encoding.EncodeUCS2BigEndian(svdb.BibliographicFileIdentifier)
+	if len(bfID) > 37 {
+		return data, fmt.Errorf("bibliographicFileIdentifier exceeds 37 bytes after UCS2 encoding")
+	}
+	copy(data[offset:offset+len(bfID)], bfID)
 	offset += 37
 
 	// 23. volumeCreationDateAndTime: 17 bytes.
@@ -453,7 +479,11 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	offset++
 
 	// 2. System Identifier: 32 bytes (ASCII)
-	svdb.SystemIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
+	if svdb.IsJoliet() {
+		svdb.SystemIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+32])
+	} else {
+		svdb.SystemIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
+	}
 	offset += 32
 
 	// 3. Volume Identifier: 32 bytes (Joliet = UCS-2, else ASCII)
@@ -557,15 +587,27 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	offset += 128
 
 	// 20. Copyright File Identifier: 37 bytes
-	svdb.CopyrightFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
+	if svdb.IsJoliet() {
+		svdb.CopyrightFileIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+37])
+	} else {
+		svdb.CopyrightFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
+	}
 	offset += 37
 
 	// 21. Abstract File Identifier: 37 bytes
-	svdb.AbstractFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
+	if svdb.IsJoliet() {
+		svdb.AbstractFileIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+37])
+	} else {
+		svdb.AbstractFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
+	}
 	offset += 37
 
 	// 22. Bibliographic File Identifier: 37 bytes
-	svdb.BibliographicFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
+	if svdb.IsJoliet() {
+		svdb.BibliographicFileIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+37])
+	} else {
+		svdb.BibliographicFileIdentifier = strings.TrimRight(string(data[offset:offset+37]), " ")
+	}
 	offset += 37
 
 	// 23. Volume Creation Date & Time: 17 bytes
