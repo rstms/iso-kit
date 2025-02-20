@@ -51,7 +51,8 @@ func (p *Parser) GetBootRecord() (*descriptor.BootRecordDescriptor, error) {
 
 		// A Volume Descriptor Set Terminator has type 255.
 		if header.VolumeDescriptorType == descriptor.TYPE_TERMINATOR_DESCRIPTOR {
-			return nil, errors.New("no boot record found in the volume descriptor set")
+			// No boot record found which is not a problem
+			return nil, nil
 		}
 
 		// Validate the ISO9660 signature.

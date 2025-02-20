@@ -64,7 +64,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 
 	// Check for El-Torito boot record
 	var et *boot.ElTorito
-	if boot.IsElTorito(bootRecord.BootSystemIdentifier) && openOptions.ElToritoEnabled {
+	if bootRecord != nil && boot.IsElTorito(bootRecord.BootSystemIdentifier) && openOptions.ElToritoEnabled {
 		et, err = p.GetElTorito(bootRecord)
 		if err != nil {
 			return nil, err
@@ -612,14 +612,14 @@ func (iso *ISO9660) Save(writer io.WriterAt) error {
 	bootOffset := pvdOffset + sectorSize
 	svdOffset := bootOffset + sectorSize
 	ptvdOffset := svdOffset + (int64(len(iso.svds)) * sectorSize)
-	termOffset := bootOffset + sectorSize
+	termOffset := ptvdOffset + sectorSize
 
 	type descriptorSetEntry struct {
 		descriptor descriptor.VolumeDescriptor
 		offset     int64
 	}
 	descriptorSet := []*descriptorSetEntry{
-		{descriptor: iso.pvd, offset: pvdOffset},
+		//{descriptor: iso.pvd, offset: pvdOffset},
 	}
 	for i, svd := range iso.svds {
 		descriptorSet = append(descriptorSet,
@@ -641,6 +641,15 @@ func (iso *ISO9660) Save(writer io.WriterAt) error {
 
 	// Write system area
 	_, err := writer.WriteAt(iso.systemArea.Contents[:], 0)
+	if err != nil {
+		return err
+	}
+
+	pvdBytes, err := iso.pvd.Marshal()
+	if err != nil {
+		return err
+	}
+	_, err = writer.WriteAt(pvdBytes[:], pvdOffset)
 	if err != nil {
 		return err
 	}

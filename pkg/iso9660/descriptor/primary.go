@@ -270,7 +270,8 @@ type PrimaryVolumeDescriptorBody struct {
 	ReservedField2 [PRIMARY_RESERVED_FIELD2_SIZE]byte `json:"reserved_field_2"`
 }
 
-// Marshal converts the PrimaryVolumeDescriptorBody into its 2041‑byte on‑disk representation.
+// Marshal converts the PrimaryVolumeDescriptorBody into its 2041‑byte on‑disk representation,
+// ensuring that all string fields are padded with consts.ISO9660_FILLER (' ').
 func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte, error) {
 	var data [PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte
 	offset := 0
@@ -279,12 +280,12 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	data[offset] = pvdb.UnusedField1
 	offset++
 
-	// 2. systemIdentifier: 32 bytes.
+	// 2. systemIdentifier: 32 bytes (padded with ' ').
 	sysID := helpers.PadString(pvdb.SystemIdentifier, 32)
 	copy(data[offset:offset+32], sysID)
 	offset += 32
 
-	// 3. volumeIdentifier: 32 bytes.
+	// 3. volumeIdentifier: 32 bytes (padded).
 	volID := helpers.PadString(pvdb.VolumeIdentifier, 32)
 	copy(data[offset:offset+32], volID)
 	offset += 32
@@ -436,7 +437,8 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	offset += 653
 
 	if offset != PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE {
-		return data, fmt.Errorf("marshal error: expected offset %d, got %d", PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE, offset)
+		return data, fmt.Errorf("marshal error: expected offset %d, got %d",
+			PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE, offset)
 	}
 
 	return data, nil

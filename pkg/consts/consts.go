@@ -59,7 +59,7 @@ const (
 	ISO9660_SEPARATOR_2 = ";"
 
 	// ISO9660 Filler 0x20 (space)
-	ISO9660_FILLER = " "
+	ISO9660_FILLER = ' '
 
 	// Standard UDF Identifier
 	UDF_STD_IDENTIFIER = "BEA01"
