@@ -660,6 +660,14 @@ func (iso *ISO9660) Save(writer io.WriterAt) error {
 		}
 	}
 
+	// Write path tables according to their location in the volume descriptors
+	err = iso.writePathTables(writer)
+	if err != nil {
+		return err
+	}
+
+	// Write directory records
+
 	//pathTableOffset := svdOffset + (len(iso.svds) * sectorSize)
 	//// Directory Record offsets should be
 	//
@@ -738,6 +746,7 @@ func (iso *ISO9660) Close() error {
 	return nil
 }
 
+// writePathTables writes the path tables to the ISO9660 filesystem.
 func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
 	if iso.pvd == nil {
 		return errors.New("PVD is missing")
@@ -748,6 +757,8 @@ func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
 		return err
 	}
 
+	// TODO: RM
+	fmt.Printf("Writing PVD %d byte LPathTable to offset %d\n", len(buf), int64(iso.pvd.LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE)
 	if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
 		return err
 	}
@@ -757,6 +768,8 @@ func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
 		return err
 	}
 
+	// TODO: RM
+	fmt.Printf("Writing PVD %d byte MPathTable to offset %d\n", len(buf), int64(iso.pvd.LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE)
 	if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
 		return err
 	}
@@ -767,6 +780,8 @@ func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
 			return err
 		}
 
+		// TODO: RM
+		fmt.Printf("Writing SVD %d byte LPathTable to offset %d\n", len(buf), int64(iso.svds[0].LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE)
 		if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
 			return err
 		}
@@ -778,6 +793,8 @@ func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
 			return err
 		}
 
+		// TODO: RM
+		fmt.Printf("Writing SVD %d byte MPathTable to offset %d\n", len(buf), int64(iso.svds[0].LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE)
 		if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
 			return err
 		}
@@ -786,7 +803,15 @@ func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
 	return nil
 }
 
-func (iso *ISO9660) writeDirectoryRecords(writer io.Writer) error {
+func (iso *ISO9660) writeDirectoryRecords(writer io.WriterAt) error {
+
+	var rootDirOffset uint32
+
+	// TODO: Write PVD Directory records starting with the root
+	rootDirOffset = iso.pvd.RootDirectoryRecord.LocationOfExtent
+
+	// TODO: Write SVD Directory records starting with the root
+
 	//sectorSize := consts.ISO9660_SECTOR_SIZE
 	//
 	//// Root Directory
