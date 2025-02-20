@@ -458,7 +458,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 3. Volume Identifier: 32 bytes (Joliet = UCS-2, else ASCII)
 	if svdb.IsJoliet() {
-		svdb.VolumeIdentifier = encoding.DecodeUCS2(data[offset : offset+32])
+		svdb.VolumeIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+32])
 	} else {
 		svdb.VolumeIdentifier = strings.TrimRight(string(data[offset:offset+32]), " ")
 	}
@@ -526,7 +526,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 16. Volume Set Identifier: 128 bytes (Joliet = UCS-2, else ASCII)
 	if svdb.IsJoliet() {
-		svdb.VolumeSetIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
+		svdb.VolumeSetIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+128])
 	} else {
 		svdb.VolumeSetIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -534,7 +534,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 17. Publisher Identifier: 128 bytes
 	if svdb.IsJoliet() {
-		svdb.PublisherIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
+		svdb.PublisherIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+128])
 	} else {
 		svdb.PublisherIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -542,7 +542,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 18. Data Preparer Identifier: 128 bytes
 	if svdb.IsJoliet() {
-		svdb.DataPreparerIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
+		svdb.DataPreparerIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+128])
 	} else {
 		svdb.DataPreparerIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}
@@ -550,7 +550,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 
 	// 19. Application Identifier: 128 bytes
 	if svdb.IsJoliet() {
-		svdb.ApplicationIdentifier = encoding.DecodeUCS2(data[offset : offset+128])
+		svdb.ApplicationIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+128])
 	} else {
 		svdb.ApplicationIdentifier = strings.TrimRight(string(data[offset:offset+128]), " ")
 	}

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/helpers"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"strings"
+	"time"
 )
 
 const (
@@ -15,6 +17,86 @@ const (
 type BootRecordDescriptor struct {
 	VolumeDescriptorHeader
 	BootRecordBody
+}
+
+func (d *BootRecordDescriptor) VolumeIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) SystemIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) VolumeSetIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) PublisherIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) DataPreparerIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) ApplicationIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) CopyrightFileIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) AbstractFileIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) BibliographicFileIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) VolumeCreationDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) VolumeModificationDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) VolumeExpirationDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) VolumeEffectiveDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) HasJoliet() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) HasRockRidge() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *BootRecordDescriptor) RootDirectory() *directory.DirectoryRecord {
+	//TODO implement me
+	panic("implement me")
 }
 
 type BootRecordBody struct {

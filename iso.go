@@ -44,7 +44,7 @@ type ISO interface {
 	HasRockRidge() bool
 	HasElTorito() bool
 
-	Save(writer io.Writer) error
+	Save(writer io.WriterAt) error
 	Close() error
 }
 
@@ -96,7 +96,7 @@ func Open(filename string, opts ...option.OpenOption) (ISO, error) {
 	return nil, errors.New("unsupported ISO format")
 }
 
-func Create(filename string, opts ...option.CreateOption) (ISO, error) {
+func Create(name string, opts ...option.CreateOption) (ISO, error) {
 	// Set default option(s)
 	options := option.CreateOptions{
 		ISOType: option.ISO_TYPE_ISO9660,
@@ -109,9 +109,9 @@ func Create(filename string, opts ...option.CreateOption) (ISO, error) {
 
 	switch options.ISOType {
 	case option.ISO_TYPE_ISO9660:
-		return iso9660.Create(filename, opts...)
+		return iso9660.Create(name, opts...)
 	case option.ISO_TYPE_UDF:
-		return udf.Create(filename, opts...)
+		return udf.Create(name, opts...)
 	default:
 		return nil, errors.New("unsupported ISO type")
 	}

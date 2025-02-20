@@ -3,7 +3,57 @@ package pathtable
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/bgrewell/iso-kit/pkg/consts"
+	"io"
 )
+
+func NewPathTable(reader io.ReaderAt, location uint32, size int, littleEndian bool) (*PathTable, error) {
+	data := make([]byte, size)
+	_, err := reader.ReadAt(data, int64(location)*consts.ISO9660_SECTOR_SIZE)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read path table: %w", err)
+	}
+
+	pt := &PathTable{}
+	offset := 0
+
+	for offset < len(data) {
+		record := &PathTableRecord{}
+		if err := record.Unmarshal(data[offset:], littleEndian); err != nil {
+			return nil, err
+		}
+		pt.Records = append(pt.Records, record)
+
+		// Move to the next record
+		recordLen := int(record.LengthOfDirectoryIdentifier) + 8
+		if recordLen%2 != 0 {
+			recordLen++ // Handle padding byte
+		}
+		offset += recordLen
+	}
+
+	return pt, nil
+}
+
+// PathTable represents a full path table, containing multiple records.
+type PathTable struct {
+	Records []*PathTableRecord
+}
+
+// Marshal converts a PathTable into a contiguous byte array.
+func (pt *PathTable) Marshal(littleEndian bool) ([]byte, error) {
+	var buf []byte
+
+	for _, record := range pt.Records {
+		recBytes, err := record.Marshal(littleEndian)
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, recBytes...)
+	}
+
+	return buf, nil
+}
 
 type PathTableRecord struct {
 	// Length of Directory Identifier specifies the length in bytes of the Directory Identifier field of the Path Table
@@ -28,101 +78,84 @@ type PathTableRecord struct {
 	// Padding *byte `json:"padding" ----------
 }
 
-// Marshal converts the PathTableRecord into its on‑disk byte representation.
-func (ptr *PathTableRecord) Marshal() ([]byte, error) {
-	// Convert the DirectoryIdentifier to bytes.
+// Marshal converts a single PathTableRecord into a byte slice.
+func (ptr *PathTableRecord) Marshal(littleEndian bool) ([]byte, error) {
 	dirIDBytes := []byte(ptr.DirectoryIdentifier)
-	// Set the LengthOfDirectoryIdentifier field (should equal len(dirIDBytes)).
 	ptr.LengthOfDirectoryIdentifier = uint8(len(dirIDBytes))
 
-	// Compute the total record length:
-	// Fixed fields: 1 + 1 + 4 + 2 = 8 bytes,
-	// plus DirectoryIdentifier bytes,
-	// plus 1 padding byte if the identifier length is odd.
 	recordLen := 8 + len(dirIDBytes)
 	if len(dirIDBytes)%2 != 0 {
 		recordLen++
 	}
 
-	buf := make([]byte, 0, recordLen)
+	buf := make([]byte, recordLen)
+	offset := 0
 
-	// 1. LengthOfDirectoryIdentifier (1 byte)
-	buf = append(buf, ptr.LengthOfDirectoryIdentifier)
+	buf[offset] = ptr.LengthOfDirectoryIdentifier
+	offset++
+	buf[offset] = ptr.ExtendedAttributeRecordLength
+	offset++
 
-	// 2. ExtendedAttributeRecordLength (1 byte)
-	buf = append(buf, ptr.ExtendedAttributeRecordLength)
+	if littleEndian {
+		binary.LittleEndian.PutUint32(buf[offset:], ptr.LocationOfExtent)
+	} else {
+		binary.BigEndian.PutUint32(buf[offset:], ptr.LocationOfExtent)
+	}
+	offset += 4
 
-	// 3. LocationOfExtent (4 bytes, little‑endian)
-	locBytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(locBytes, ptr.LocationOfExtent)
-	buf = append(buf, locBytes...)
+	if littleEndian {
+		binary.LittleEndian.PutUint16(buf[offset:], ptr.ParentDirectoryNumber)
+	} else {
+		binary.BigEndian.PutUint16(buf[offset:], ptr.ParentDirectoryNumber)
+	}
+	offset += 2
 
-	// 4. ParentDirectoryNumber (2 bytes, little‑endian)
-	parentBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(parentBytes, ptr.ParentDirectoryNumber)
-	buf = append(buf, parentBytes...)
+	copy(buf[offset:], dirIDBytes)
+	offset += len(dirIDBytes)
 
-	// 5. DirectoryIdentifier (variable length)
-	buf = append(buf, dirIDBytes...)
-
-	// 6. Padding Field: if the Directory Identifier length is odd, append one null byte.
 	if len(dirIDBytes)%2 != 0 {
-		buf = append(buf, 0x00)
+		buf[offset] = 0x00 // Padding byte
 	}
 
 	return buf, nil
 }
 
-// Unmarshal decodes a PathTableRecord from the given byte slice.
-// It expects the data slice to contain exactly one record.
-func (ptr *PathTableRecord) Unmarshal(data []byte) error {
-	// At minimum, we need the fixed 8 bytes.
+// Unmarshal decodes a single PathTableRecord from a byte slice.
+func (ptr *PathTableRecord) Unmarshal(data []byte, littleEndian bool) error {
 	if len(data) < 8 {
-		return fmt.Errorf("data too short to contain a PathTableRecord: %d bytes", len(data))
+		return fmt.Errorf("data too short to contain a PathTableRecord")
 	}
 	offset := 0
 
-	// 1. LengthOfDirectoryIdentifier (1 byte)
 	ptr.LengthOfDirectoryIdentifier = data[offset]
 	offset++
-
-	// 2. ExtendedAttributeRecordLength (1 byte)
 	ptr.ExtendedAttributeRecordLength = data[offset]
 	offset++
 
-	// 3. LocationOfExtent (4 bytes, little‑endian)
-	if len(data) < offset+4 {
-		return fmt.Errorf("data too short for LocationOfExtent")
+	if littleEndian {
+		ptr.LocationOfExtent = binary.LittleEndian.Uint32(data[offset:])
+	} else {
+		ptr.LocationOfExtent = binary.BigEndian.Uint32(data[offset:])
 	}
-	ptr.LocationOfExtent = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 4. ParentDirectoryNumber (2 bytes, little‑endian)
-	if len(data) < offset+2 {
-		return fmt.Errorf("data too short for ParentDirectoryNumber")
+	if littleEndian {
+		ptr.ParentDirectoryNumber = binary.LittleEndian.Uint16(data[offset:])
+	} else {
+		ptr.ParentDirectoryNumber = binary.BigEndian.Uint16(data[offset:])
 	}
-	ptr.ParentDirectoryNumber = binary.LittleEndian.Uint16(data[offset : offset+2])
 	offset += 2
 
-	// 5. DirectoryIdentifier (LengthOfDirectoryIdentifier bytes)
 	n := int(ptr.LengthOfDirectoryIdentifier)
 	if len(data) < offset+n {
-		return fmt.Errorf("data too short for DirectoryIdentifier: need %d, got %d", n, len(data)-offset)
+		return fmt.Errorf("data too short for DirectoryIdentifier")
 	}
 	ptr.DirectoryIdentifier = string(data[offset : offset+n])
 	offset += n
 
-	// 6. Padding Field: present if the Directory Identifier length is odd.
 	if n%2 != 0 {
-		if len(data) < offset+1 {
-			return fmt.Errorf("data too short for padding byte")
-		}
-		if data[offset] != 0x00 {
-			return fmt.Errorf("expected padding byte 0x00, got 0x%02X", data[offset])
-		}
-		offset++
+		offset++ // Skip padding byte
 	}
 
-	// (Optionally, you might check that offset == len(data) to ensure there’s no trailing garbage.)
 	return nil
 }

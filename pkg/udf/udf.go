@@ -148,7 +148,7 @@ func (U UDF) Extract(path string) error {
 	panic("implement me")
 }
 
-func (U UDF) Save(writer io.Writer) error {
+func (U UDF) Save(writer io.WriterAt) error {
 	//TODO implement me
 	panic("implement me")
 }

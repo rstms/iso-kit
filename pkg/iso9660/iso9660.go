@@ -1,6 +1,7 @@
 package iso9660
 
 import (
+	"errors"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
@@ -8,8 +9,10 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/parser"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/pathtable"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/systemarea"
 	"github.com/bgrewell/iso-kit/pkg/option"
+	"github.com/bgrewell/iso-kit/pkg/version"
 	"github.com/go-logr/logr"
 	"io"
 	"os"
@@ -80,73 +83,188 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		return nil, err
 	}
 
+	// Read any partition volume descriptors
+	partitionvds, err := p.GetVolumePartitionDescriptors()
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle walking the pvd directory records
+	pvdDirectoryRecords, err := p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle walking the svd directory records
+	var svdDirectoryRecords []*directory.DirectoryRecord
+	if len(svds) > 0 {
+		svdDirectoryRecords, err = p.WalkDirectoryRecords(svds[0].RootDirectoryRecord)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Handle processing volume descriptor
 	var filesystemEntries []*filesystem.FileSystemEntry
-	var directoryRecords []*directory.DirectoryRecord
 	var activeVD descriptor.VolumeDescriptor
+	var activeDirectoryRecords = &pvdDirectoryRecords
 	if openOptions.PreferJoliet && len(svds) > 0 {
 		// Open the Joliet filesystem
 		filesystemEntries, err = p.BuildFileSystemEntries(svds[0].RootDirectoryRecord, false)
-		directoryRecords, err = p.WalkDirectoryRecords(svds[0].RootDirectoryRecord)
+		activeDirectoryRecords = &svdDirectoryRecords
 		activeVD = svds[0]
 	} else {
 		filesystemEntries, err = p.BuildFileSystemEntries(pvd.RootDirectoryRecord, openOptions.RockRidgeEnabled)
-		directoryRecords, err = p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
 		activeVD = pvd
 	}
 
+	// Handle the path tables
+	pvdLPathTable, err := pathtable.NewPathTable(isoReader, pvd.LocationOfTypeLPathTable, int(pvd.PathTableSize), true)
+	if err != nil {
+		return nil, err
+	}
+	pvdMPathTable, err := pathtable.NewPathTable(isoReader, pvd.LocationOfTypeMPathTable, int(pvd.PathTableSize), false)
+	if err != nil {
+		return nil, err
+	}
+	var svdLPathTable, svdMPathTable *pathtable.PathTable
+	if len(svds) > 0 {
+		svdLPathTable, err = pathtable.NewPathTable(isoReader, svds[0].LocationOfTypeLPathTable, int(svds[0].PathTableSize), true)
+		if err != nil {
+			return nil, err
+		}
+		svdMPathTable, err = pathtable.NewPathTable(isoReader, svds[0].LocationOfTypeMPathTable, int(svds[0].PathTableSize), false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	iso := &ISO9660{
-		isoReader:         isoReader,
-		openOptions:       openOptions,
-		systemArea:        sa,
-		bootRecord:        bootRecord,
-		pvd:               pvd,
-		svds:              svds,
-		directoryRecords:  directoryRecords,
-		filesystemEntries: filesystemEntries,
-		activeVD:          activeVD,
-		elTorito:          et,
+		isoReader:              isoReader,
+		openOptions:            openOptions,
+		systemArea:             sa,
+		bootRecord:             bootRecord,
+		pvd:                    pvd,
+		svds:                   svds,
+		partitionvds:           partitionvds,
+		pvdDirectoryRecords:    pvdDirectoryRecords,
+		svdDirectoryRecords:    svdDirectoryRecords,
+		activeDirectoryRecords: activeDirectoryRecords,
+		pvdLPathTable:          pvdLPathTable,
+		pvdMPathTable:          pvdMPathTable,
+		svdLPathTable:          svdLPathTable,
+		svdMPathTable:          svdMPathTable,
+		filesystemEntries:      filesystemEntries,
+		activeVD:               activeVD,
+		elTorito:               et,
 	}
 
 	return iso, nil
 }
 
-func Create(filename string, opts ...option.CreateOption) (*ISO9660, error) {
-
+func Create(name string, opts ...option.CreateOption) (*ISO9660, error) {
 	// Set default create options
 	createOptions := &option.CreateOptions{
-		Preparer: "iso-kit",
+		Preparer: fmt.Sprintf("iso-kit %s %s (%s) %s", version.Version(), version.Revision(), version.Branch(), version.Date()),
 	}
 
 	for _, opt := range opts {
 		opt(createOptions)
 	}
 
-	// 1: Create system area which is 16 sectors. Boot stuff goes here??
+	// Create a root directory record
+	rootDir := &directory.DirectoryRecord{
+		FileIdentifier:                "\x00",
+		LengthOfDirectoryRecord:       0,
+		ExtendedAttributeRecordLength: 0,
+		LocationOfExtent:              0, // Updated when writing directory structures
+		DataLength:                    0,
+		RecordingDateAndTime:          time.Now(),
+		FileFlags:                     directory.FileFlags{Directory: true},
+		VolumeSequenceNumber:          1, // Volume sequence should be set
+	}
+
+	// 1: Create system area (First 16 sectors reserved, boot record might go here)
 	sa := systemarea.SystemArea{}
 
 	// 2: Create volume descriptor set
-	//    2.1: Create primary volume descriptor
-	pvd := descriptor.PrimaryVolumeDescriptor{}
-	//    2.2: Create supplementary volume descriptor(s)
-	svd := descriptor.SupplementaryVolumeDescriptor{}
-	//    2.3: Create volume partition descriptor(s)
-	//    2.4: Create boot record(s)
+	pvd := descriptor.PrimaryVolumeDescriptor{
+		VolumeDescriptorHeader: descriptor.VolumeDescriptorHeader{
+			VolumeDescriptorType:    descriptor.TYPE_PRIMARY_DESCRIPTOR,
+			StandardIdentifier:      consts.ISO9660_STD_IDENTIFIER,
+			VolumeDescriptorVersion: consts.ISO9660_VOLUME_DESC_VERSION,
+		},
+		PrimaryVolumeDescriptorBody: descriptor.PrimaryVolumeDescriptorBody{
+			SystemIdentifier:              "",
+			VolumeIdentifier:              name,
+			VolumeSpaceSize:               0, // Set later
+			VolumeSetSize:                 1, // Single volume
+			VolumeSequenceNumber:          1,
+			LogicalBlockSize:              consts.ISO9660_SECTOR_SIZE,
+			RootDirectoryRecord:           rootDir,
+			VolumeSetIdentifier:           "",
+			PublisherIdentifier:           "",
+			DataPreparerIdentifier:        createOptions.Preparer,
+			ApplicationIdentifier:         "",
+			VolumeCreationDateAndTime:     time.Now(),
+			VolumeModificationDateAndTime: time.Now(),
+			VolumeExpirationDateAndTime:   time.Now(),
+			VolumeEffectiveDateAndTime:    time.Now(),
+			FileStructureVersion:          1,
+		},
+	}
+
+	// 2.2: Create supplementary volume descriptor (if Joliet is enabled)
+	var svds []*descriptor.SupplementaryVolumeDescriptor
+	if createOptions.JolietEnabled {
+		svd := descriptor.SupplementaryVolumeDescriptor{
+			VolumeDescriptorHeader: descriptor.VolumeDescriptorHeader{
+				VolumeDescriptorType:    descriptor.TYPE_SUPPLEMENTARY_DESCRIPTOR,
+				StandardIdentifier:      consts.ISO9660_STD_IDENTIFIER,
+				VolumeDescriptorVersion: consts.ISO9660_VOLUME_DESC_VERSION,
+			},
+			SupplementaryVolumeDescriptorBody: descriptor.SupplementaryVolumeDescriptorBody{
+				VolumeFlags:                   0,
+				SystemIdentifier:              "",
+				VolumeIdentifier:              name,
+				VolumeSpaceSize:               [8]byte{}, // Needs to be set later
+				RootDirectoryRecord:           rootDir,
+				VolumeSetIdentifier:           "",
+				PublisherIdentifier:           "",
+				DataPreparerIdentifier:        createOptions.Preparer,
+				ApplicationIdentifier:         "",
+				VolumeCreationDateAndTime:     time.Now(),
+				VolumeModificationDateAndTime: time.Now(),
+				VolumeExpirationDateAndTime:   time.Now(),
+				VolumeEffectiveDateAndTime:    time.Now(),
+				FileStructureVersion:          1,
+			},
+		}
+		// Copy the Joliet escape sequence (%/@ for Level 3)
+		copy(svd.SupplementaryVolumeDescriptorBody.EscapeSequences[:], []byte(consts.JOLIET_LEVEL_3_ESCAPE))
+		svds = append(svds, &svd)
+	}
+
+	// 2.3: Create volume partition descriptor(s) (not used often in basic ISO9660)
+	var pvds []*descriptor.VolumePartitionDescriptor
+
+	// 2.4: Create boot record (only needed for bootable ISOs)
 	br := descriptor.BootRecordDescriptor{}
-	//    2.5: Create termination record
 
-	// 3: Create path tables
+	// 3: Initialize path tables (Will need to be generated)
+	// Placeholder for path table setup
 
-	// 4: Create directory records
+	// 4: Create directory records (Root directory will be updated dynamically)
+	// Placeholder for directory handling
 
+	// Build ISO structure
 	iso := &ISO9660{
-		isoReader:     nil,
-		openOptions:   nil,
 		createOptions: createOptions,
 		systemArea:    sa,
 		bootRecord:    &br,
 		pvd:           &pvd,
-		svds:          []*descriptor.SupplementaryVolumeDescriptor{&svd},
+		svds:          svds,
+		partitionvds:  pvds,
 	}
 
 	return iso, nil
@@ -154,17 +272,42 @@ func Create(filename string, opts ...option.CreateOption) (*ISO9660, error) {
 
 // ISO9660 represents an ISO9660 filesystem.
 type ISO9660 struct {
-	isoReader         io.ReaderAt
-	openOptions       *option.OpenOptions
-	createOptions     *option.CreateOptions
-	systemArea        systemarea.SystemArea
-	bootRecord        *descriptor.BootRecordDescriptor
-	pvd               *descriptor.PrimaryVolumeDescriptor
-	svds              []*descriptor.SupplementaryVolumeDescriptor
-	activeVD          descriptor.VolumeDescriptor
-	directoryRecords  []*directory.DirectoryRecord
+	// ISO Reader
+	isoReader io.ReaderAt
+	// Open Options
+	openOptions *option.OpenOptions
+	// Create Options
+	createOptions *option.CreateOptions
+	// System Area
+	systemArea systemarea.SystemArea
+	// Boot Record Descriptor
+	bootRecord *descriptor.BootRecordDescriptor
+	// Partition Volume Descriptor(s)
+	partitionvds []*descriptor.VolumePartitionDescriptor
+	// Primary Volume Descriptor
+	pvd *descriptor.PrimaryVolumeDescriptor
+	// Supplementary Volume Descriptors
+	svds []*descriptor.SupplementaryVolumeDescriptor
+	// Pointer to the preferred Volume Descriptor
+	activeVD descriptor.VolumeDescriptor
+	// PVD Directory Records
+	pvdDirectoryRecords []*directory.DirectoryRecord
+	// SVD Directory Records
+	svdDirectoryRecords []*directory.DirectoryRecord
+	// Pointer to the preferred Directory Records
+	activeDirectoryRecords *[]*directory.DirectoryRecord
+	// pvdLPathTable is a pointer to the pvd's little-endian path table.
+	pvdLPathTable *pathtable.PathTable
+	// pvdMPathTable is a pointer to the pvd's big-endian path table.
+	pvdMPathTable *pathtable.PathTable
+	// svdLPathTable is a pointer to the svd's little-endian path table.
+	svdLPathTable *pathtable.PathTable
+	// svdMPathTable is a pointer to the svd's big-endian path table.
+	svdMPathTable *pathtable.PathTable
+	// FileSystemEntries
 	filesystemEntries []*filesystem.FileSystemEntry
-	elTorito          *boot.ElTorito
+	// ElTorito Boot Record
+	elTorito *boot.ElTorito
 }
 
 // GetVolumeID returns the volume identifier of the ISO9660 filesystem.
@@ -286,7 +429,7 @@ func (iso *ISO9660) HasJoliet() bool {
 
 // HasRockRidge returns true if the ISO9660 filesystem has Rock Ridge extensions.
 func (iso *ISO9660) HasRockRidge() bool {
-	for _, rec := range iso.directoryRecords {
+	for _, rec := range *iso.activeDirectoryRecords {
 		if rec.RockRidge != nil {
 			return true
 		}
@@ -459,9 +602,124 @@ func (iso *ISO9660) Extract(path string) error {
 	return nil
 }
 
-func (iso *ISO9660) Save(writer io.Writer) error {
-	//TODO implement me
-	panic("implement me")
+func (iso *ISO9660) Save(writer io.WriterAt) error {
+
+	sectorSize := int64(consts.ISO9660_SECTOR_SIZE)
+	saOffset := int64(0)
+
+	// Calculate offsets for descriptors
+	pvdOffset := saOffset + int64(consts.ISO9660_SYSTEM_AREA_SECTORS*sectorSize)
+	bootOffset := pvdOffset + sectorSize
+	svdOffset := bootOffset + sectorSize
+	ptvdOffset := svdOffset + (int64(len(iso.svds)) * sectorSize)
+	termOffset := bootOffset + sectorSize
+
+	type descriptorSetEntry struct {
+		descriptor descriptor.VolumeDescriptor
+		offset     int64
+	}
+	descriptorSet := []*descriptorSetEntry{
+		{descriptor: iso.pvd, offset: pvdOffset},
+	}
+	for i, svd := range iso.svds {
+		descriptorSet = append(descriptorSet,
+			&descriptorSetEntry{descriptor: svd, offset: svdOffset + int64(i)*sectorSize},
+		)
+	}
+	for i, ptvd := range iso.partitionvds {
+		descriptorSet = append(descriptorSet,
+			&descriptorSetEntry{descriptor: ptvd, offset: ptvdOffset + int64(i)*sectorSize},
+		)
+	}
+	if iso.bootRecord != nil {
+		descriptorSet = append(descriptorSet,
+			&descriptorSetEntry{descriptor: iso.bootRecord, offset: bootOffset},
+		)
+	}
+	descriptorSet = append(descriptorSet,
+		&descriptorSetEntry{descriptor: descriptor.NewVolumeDescriptorSetTerminator(), offset: termOffset})
+
+	// Write system area
+	_, err := writer.WriteAt(iso.systemArea.Contents[:], 0)
+	if err != nil {
+		return err
+	}
+
+	// Write descriptor set
+	for _, entry := range descriptorSet {
+		if err = writeDescriptor(writer, entry.descriptor, entry.offset); err != nil {
+			return err
+		}
+	}
+
+	//pathTableOffset := svdOffset + (len(iso.svds) * sectorSize)
+	//// Directory Record offsets should be
+	//
+	//
+
+	//// TODO: Clean up all of the offset calculations, instead this should be calculated somewhere
+	////       else and the locations should just be used to write the data or this should be wrapped
+	////       nicely in a function.
+	//// Write volume descriptor set
+	//pvdOffset := int64(16 * sectorSize)
+	//err = writeDescriptor(writer, iso.pvd, pvdOffset)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//svdOffset := pvdOffset + int64(1*sectorSize)
+	//for i, svd := range iso.svds {
+	//	err = writeDescriptor(writer, svd, svdOffset)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	svdOffset = svdOffset+int64((i+1)*sectorSize)
+	//}
+	//
+	//ptvdOffset := svdOffset
+	//for i, pvd := range iso.partitionvds {
+	//	if err = writeDescriptor(writer, pvd, ptvdOffset); err != nil {
+	//		return err
+	//	}
+	//	ptvdOffset = ptvdOffset+int64((i+1)*sectorSize)
+	//}
+	//
+	//bootOffset := ptvdOffset
+	//if iso.bootRecord != nil {
+	//	if err = writeDescriptor(writer, iso.bootRecord, bootOffset); err != nil {
+	//		return err
+	//	}
+	//	bootOffset = bootOffset + int64(1*sectorSize)
+	//}
+	//
+	//tr := descriptor.NewVolumeDescriptorSetTerminator()
+	//if err := writeDescriptor(writer, tr, bootOffset); err != nil {
+	//	return err
+	//}
+
+	//// 3: Write path tables (Little & Big Endian versions)
+	//if err = iso.writePathTables(writer); err != nil {
+	//	return err
+	//}
+	//
+	//// 4: Write directory records (Root & Subdirectories)
+	//totalRecords := append(iso.pvdDirectoryRecords, iso.svdDirectoryRecords...)
+	//for i, dr := range totalRecords {
+	//	drOffset :=
+	//}
+	//
+	//
+	//// 5: Write file contents (Ensuring correct logical block placement)
+	//if err := iso.writeFileData(writer); err != nil {
+	//	return err
+	//}
+	//
+	//// 6: Align to sector size (Padding to 2048-byte boundaries)
+	//if err := padToSector(writer); err != nil {
+	//	return err
+	//}
+
+	return nil
 }
 
 // Close closes the ISO9660 filesystem.
@@ -470,4 +728,155 @@ func (iso *ISO9660) Close() error {
 		return f.Close()
 	}
 	return nil
+}
+
+func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
+	if iso.pvd == nil {
+		return errors.New("PVD is missing")
+	}
+
+	buf, err := iso.pvdLPathTable.Marshal(true)
+	if err != nil {
+		return err
+	}
+
+	if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+		return err
+	}
+
+	buf, err = iso.pvdMPathTable.Marshal(false)
+	if err != nil {
+		return err
+	}
+
+	if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+		return err
+	}
+
+	if iso.svdLPathTable != nil {
+		buf, err = iso.svdLPathTable.Marshal(true)
+		if err != nil {
+			return err
+		}
+
+		if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+			return err
+		}
+	}
+
+	if iso.svdMPathTable != nil {
+		buf, err = iso.svdMPathTable.Marshal(false)
+		if err != nil {
+			return err
+		}
+
+		if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (iso *ISO9660) writeDirectoryRecords(writer io.Writer) error {
+	//sectorSize := consts.ISO9660_SECTOR_SIZE
+	//
+	//// Root Directory
+	//rootDirData, err := iso.
+	//if err != nil {
+	//	return err
+	//}
+	//if _, err := writer.Write(rootDirData[:]); err != nil {
+	//	return err
+	//}
+	//
+	//// Write Subdirectories
+	//for _, dir := range iso.directories {
+	//	dirData, err := dir.Marshal()
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	// Ensure correct sector alignment
+	//	padding := sectorSize - (len(dirData) % sectorSize)
+	//	if padding < sectorSize {
+	//		dirData = append(dirData, make([]byte, padding)...)
+	//	}
+	//
+	//	if _, err := writer.Write(dirData[:]); err != nil {
+	//		return err
+	//	}
+	//}
+	//
+	//return nil
+	return errors.New("not implemented")
+}
+
+func (iso *ISO9660) writeFileData(writer io.Writer) error {
+	//sectorSize := consts.ISO9660_SECTOR_SIZE
+	//
+	//for _, file := range iso. {
+	//	fileData, err := file.ReadData()
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	if _, err := writer.Write(fileData); err != nil {
+	//		return err
+	//	}
+	//
+	//	// Align to sector size
+	//	padding := sectorSize - (len(fileData) % sectorSize)
+	//	if padding < sectorSize {
+	//		if _, err := writer.Write(make([]byte, padding)); err != nil {
+	//			return err
+	//		}
+	//	}
+	//}
+	//
+	//return nil
+	return errors.New("not implemented")
+}
+
+func padToSector(writer io.Writer) error {
+	//sectorSize := consts.ISO9660_SECTOR_SIZE
+	//
+	//// Get current file position
+	//offset, err := writer.Seek(0, io.SeekCurrent)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// Compute padding
+	//padding := sectorSize - (offset % sectorSize)
+	//if padding < sectorSize {
+	//	_, err := writer.Write(make([]byte, padding))
+	//	return err
+	//}
+	//
+	//return nil
+	return errors.New("not implemented")
+}
+
+func writeDescriptor(writer io.WriterAt, descriptor descriptor.VolumeDescriptor, offset int64) error {
+	data, err := descriptor.Marshal()
+	if err != nil {
+		return err
+	}
+
+	_, err = writer.WriteAt(data[:], offset)
+	return err
+}
+
+func writePathTable(writer io.Writer, location uint32, littleEndian bool) error {
+	//if location == 0 {
+	//	return nil // Skip if no path table is set
+	//}
+	//
+	//pathTable := generatePathTable(littleEndian) // Implement the path table generator
+	//data := pathTable.Marshal()
+	//
+	//_, err := writer.Write(data)
+	//return err
+	return errors.New("not implemented")
 }

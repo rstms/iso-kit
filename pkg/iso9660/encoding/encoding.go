@@ -70,72 +70,84 @@ func UnmarshalUint16LSBMSB(data [4]byte) (uint16, error) {
 // and the 17th byte is the time zone offset (in 15-minute intervals) as a signed integer.
 // Note: This format is used in Volume Descriptors
 func MarshalDateTime(t time.Time) ([17]byte, error) {
-	var b [17]byte
+	var out [17]byte
 
-	year, month, day := t.Date()
-	hour, minute, second := t.Clock()
-	// Calculate hundredths of a second (each hundredth = 10,000,000 ns)
-	hundredths := t.Nanosecond() / 10000000
-
-	// Format date and time into a 16-character string.
-	// For example: "20230327140509" plus hundredths "45" → "2023032714050945"
-	dtStr := fmt.Sprintf("%04d%02d%02d%02d%02d%02d%02d",
-		year, int(month), day, hour, minute, second, hundredths)
-	if len(dtStr) != 16 {
-		return b, fmt.Errorf("formatted date/time length is not 16: got %d", len(dtStr))
+	// If zero time => ASCII '0' x16 + final offset=0 => "unspecified"
+	if t.IsZero() {
+		for i := 0; i < 16; i++ {
+			out[i] = '0'
+		}
+		out[16] = 0
+		return out, nil
 	}
-	copy(b[:16], dtStr)
 
-	// Determine the time zone offset in seconds.
+	// Convert hundredths
+	y, m, d := t.Date()
+	hh, mm, ss := t.Clock()
+	hundredths := t.Nanosecond() / 10_000_000
+
+	// Format "YYYYMMDDhhmmsscc" (16 digits total)
+	s := fmt.Sprintf("%04d%02d%02d%02d%02d%02d%02d",
+		y, int(m), d, hh, mm, ss, hundredths)
+	copy(out[:16], s)
+
+	// Get offset in 15‑minute increments
 	_, offsetSec := t.Zone()
-	// Convert offset to number of 15-minute intervals.
-	offset15 := int8(offsetSec / (15 * 60))
-	// Validate offset range: must be between -48 and +52.
+	offset15 := int8(offsetSec / 900) // 900 = 15*60
 	if offset15 < -48 || offset15 > 52 {
-		return b, fmt.Errorf("time zone offset %d (in 15-minute intervals: %d) is out of allowed range", offsetSec, offset15)
+		return [17]byte{}, fmt.Errorf("offset %d out of ISO9660 bounds", offset15)
 	}
-	// Set the 17th byte to the offset.
-	b[16] = byte(offset15)
-	return b, nil
+
+	out[16] = byte(offset15)
+	return out, nil
 }
 
 // UnmarshalDateTime converts a 17-byte ISO9660 date/time field into a time.Time.
 // It expects the first 16 bytes to be ASCII digits representing
 // YYYY MM DD hh mm ss cc, and the 17th byte as the offset in 15-minute intervals.
 // Note: This format is used in Volume Descriptors
-func UnmarshalDateTime(data [17]byte) (time.Time, error) {
-	// Extract the date/time string from the first 16 bytes.
-	dtStr := string(data[:16])
-	if len(dtStr) != 16 {
-		return time.Time{}, fmt.Errorf("data length for date/time is not 16: got %d", len(dtStr))
+func UnmarshalDateTime(b [17]byte) (time.Time, error) {
+	// Detect "unspecified" => 16 ASCII '0' + offset=0
+	isUnspecified := true
+	for i := 0; i < 16; i++ {
+		if b[i] != '0' {
+			isUnspecified = false
+			break
+		}
+	}
+	if isUnspecified && b[16] == 0 {
+		return time.Time{}, nil
 	}
 
-	// Parse the fields using fixed-width substrings.
+	dtStr := string(b[:16])
 	var (
-		year, month, day     int
-		hour, minute, second int
-		hundredths           int
+		year, mon, day int
+		hour, min, sec int
+		hundredths     int
 	)
-	// Instead of using Sscanf (which can be tricky with fixed widths),
-	// we parse the substrings directly.
 	_, err := fmt.Sscanf(dtStr, "%4d%2d%2d%2d%2d%2d%2d",
-		&year, &month, &day, &hour, &minute, &second, &hundredths)
+		&year, &mon, &day, &hour, &min, &sec, &hundredths)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse date/time string %q: %w", dtStr, err)
+		return time.Time{}, fmt.Errorf("parse error: %v", err)
+	}
+	nsec := hundredths * 10_000_000
+
+	offset15 := int8(b[16])
+	if offset15 < -48 || offset15 > 52 {
+		return time.Time{}, fmt.Errorf("offset %d out of ISO9660 bounds", offset15)
+	}
+	offsetSec := int(offset15) * 900 // 15 min = 900s
+
+	// Use UTC if offset=0, else a numeric zone for offset
+	var loc *time.Location
+	if offsetSec == 0 {
+		loc = time.UTC
+	} else {
+		// name = "" => prints like "UTC-0800" in logs
+		loc = time.FixedZone("", offsetSec)
 	}
 
-	// Convert hundredths of a second into nanoseconds.
-	nsec := hundredths * 10000000
-
-	// The 17th byte is the time zone offset in 15-minute intervals.
-	offset15 := int8(data[16])
-	offsetSec := int(offset15) * 15 * 60
-
-	// Create a fixed location for the time zone.
-	loc := time.FixedZone("ISO9660", offsetSec)
-	// Construct the time.Time value.
-	t := time.Date(year, time.Month(month), day, hour, minute, second, nsec, loc)
-	return t, nil
+	return time.Date(year, time.Month(mon), day, hour, min, sec, nsec, loc), nil
 }
 
 // MarshalRecordingDateTime converts a time.Time into a 7-byte field according
@@ -210,8 +222,8 @@ func UnmarshalRecordingDateTime(b [7]byte) (time.Time, error) {
 	return time.Date(year, month, day, hour, minute, second, 0, loc), nil
 }
 
-// Convert UCS-2 Little-Endian encoded string to UTF-8
-func DecodeUCS2(ucs2 []byte) string {
+// DecodeUCS2BigEndian converts a UCS-2 Big-Endian encoded string to a Go (UTF-8) string.
+func DecodeUCS2BigEndian(ucs2 []byte) string {
 	if len(ucs2)%2 != 0 {
 		return "" // Invalid UCS2 input
 	}
@@ -225,4 +237,22 @@ func DecodeUCS2(ucs2 []byte) string {
 
 	s := string(runes)
 	return s
+}
+
+// EncodeUCS2BigEndian converts a Go (UTF-8) string into a UTF-16
+// (big-endian) byte slice. Any runes above U+FFFF become surrogate pairs.
+func EncodeUCS2BigEndian(s string) []byte {
+	// Convert the string into a slice of runes,
+	// then encode them as UTF-16 code units (including surrogates as needed).
+	runes := []rune(s)
+	utf16encoded := utf16.Encode(runes)
+
+	// Each UTF-16 code unit becomes two bytes in big-endian order.
+	out := make([]byte, 2*len(utf16encoded))
+	for i, code := range utf16encoded {
+		// High byte first, then low byte.
+		out[2*i] = byte(code >> 8)
+		out[2*i+1] = byte(code & 0xFF)
+	}
+	return out
 }

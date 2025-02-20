@@ -155,11 +155,6 @@ func (p *Parser) GetSupplementaryVolumeDescriptors() ([]*descriptor.Supplementar
 			return svds, nil
 		}
 
-		// Validate the ISO9660 signature.
-		if string(buf[1:6]) != "CD001" {
-			return nil, errors.New("invalid ISO9660 signature")
-		}
-
 		// If this is a Supplementary Volume Descriptor, unmarshal it and add to the collection.
 		if header.VolumeDescriptorType == descriptor.TYPE_SUPPLEMENTARY_DESCRIPTOR {
 			svd := &descriptor.SupplementaryVolumeDescriptor{
@@ -174,6 +169,56 @@ func (p *Parser) GetSupplementaryVolumeDescriptors() ([]*descriptor.Supplementar
 		}
 
 		// Otherwise, move to the next sector.
+		sector++
+	}
+}
+
+// GetVolumePartitionDescriptors reads and validates ISO9660 Volume Partition Descriptors (VPDs).
+func (p *Parser) GetVolumePartitionDescriptors() ([]*descriptor.VolumePartitionDescriptor, error) {
+	const sectorSize = consts.ISO9660_SECTOR_SIZE
+	// The Volume Descriptor Set starts at logical sector 16.
+	sector := int64(consts.ISO9660_SYSTEM_AREA_SECTORS)
+	var buf [sectorSize]byte
+
+	// Slice to store detected Volume Partition Descriptors
+	var vpds []*descriptor.VolumePartitionDescriptor
+
+	for {
+		offset := sector * int64(sectorSize)
+		n, err := p.reader.ReadAt(buf[:], offset)
+		if err != nil {
+			return nil, err
+		}
+		if n != len(buf) {
+			return nil, errors.New("failed to read full sector")
+		}
+
+		// Unmarshal the Volume Descriptor Header (first 7 bytes)
+		header := descriptor.VolumeDescriptorHeader{}
+		if err = header.Unmarshal([7]byte(buf[:7])); err != nil {
+			return nil, err
+		}
+
+		// A Volume Descriptor Set Terminator has type 255.
+		if header.VolumeDescriptorType == descriptor.TYPE_TERMINATOR_DESCRIPTOR {
+			// Having no volume partition descriptors is valid.
+			return vpds, nil
+		}
+
+		// If this is a Volume Partition Descriptor, unmarshal it and add it to the collection.
+		if header.VolumeDescriptorType == descriptor.TYPE_PARTITION_DESCRIPTOR {
+			vpd := &descriptor.VolumePartitionDescriptor{
+				VolumeDescriptorHeader: header,
+			}
+
+			if err = vpd.Unmarshal(buf); err != nil {
+				return nil, err
+			}
+
+			vpds = append(vpds, vpd)
+		}
+
+		// Move to the next sector.
 		sector++
 	}
 }

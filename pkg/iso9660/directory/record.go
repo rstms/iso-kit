@@ -320,9 +320,9 @@ func (dr *DirectoryRecord) Unmarshal(data []byte) error {
 	if offset+fiLen > int(recordLength) {
 		return fmt.Errorf("insufficient data for File Identifier")
 	}
-	
+
 	if dr.Joliet {
-		dr.FileIdentifier = encoding.DecodeUCS2(data[offset : offset+fiLen])
+		dr.FileIdentifier = encoding.DecodeUCS2BigEndian(data[offset : offset+fiLen])
 	} else {
 		dr.FileIdentifier = string(data[offset : offset+fiLen])
 	}

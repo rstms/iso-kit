@@ -9,8 +9,10 @@ const (
 )
 
 type CreateOptions struct {
-	ISOType  ISOType
-	Preparer string
+	ISOType       ISOType
+	Preparer      string
+	RootDir       string
+	JolietEnabled bool
 }
 
 type CreateOption func(*CreateOptions)
@@ -24,5 +26,17 @@ func WithISOType(isoType ISOType) CreateOption {
 func WithPreparerID(preparer string) CreateOption {
 	return func(o *CreateOptions) {
 		o.Preparer = preparer
+	}
+}
+
+func WithRootDir(rootDir string) CreateOption {
+	return func(o *CreateOptions) {
+		o.RootDir = rootDir
+	}
+}
+
+func WithJolietEnabled(jolietEnabled bool) CreateOption {
+	return func(o *CreateOptions) {
+		o.JolietEnabled = jolietEnabled
 	}
 }

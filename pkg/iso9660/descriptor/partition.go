@@ -2,7 +2,8 @@ package descriptor
 
 import (
 	"github.com/bgrewell/iso-kit/pkg/consts"
-	"io"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
+	"time"
 )
 
 const (
@@ -13,6 +14,86 @@ const (
 type VolumePartitionDescriptor struct {
 	VolumeDescriptorHeader
 	VolumePartitionDescriptorBody
+}
+
+func (d *VolumePartitionDescriptor) VolumeIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) SystemIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) VolumeSetIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) PublisherIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) DataPreparerIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) ApplicationIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) CopyrightFileIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) AbstractFileIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) BibliographicFileIdentifier() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) VolumeCreationDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) VolumeModificationDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) VolumeExpirationDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) VolumeEffectiveDateTime() time.Time {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) HasJoliet() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) HasRockRidge() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *VolumePartitionDescriptor) RootDirectory() *directory.DirectoryRecord {
+	//TODO implement me
+	panic("implement me")
 }
 
 type VolumePartitionDescriptorBody struct {
@@ -40,6 +121,6 @@ func (d *VolumePartitionDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte,
 	return [consts.ISO9660_SECTOR_SIZE]byte{}, nil
 }
 
-func (d *VolumePartitionDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte, isoFile io.ReaderAt) error {
+func (d *VolumePartitionDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) error {
 	return nil
 }
