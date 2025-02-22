@@ -38,6 +38,7 @@ const (
 type PrimaryVolumeDescriptor struct {
 	VolumeDescriptorHeader
 	PrimaryVolumeDescriptorBody
+	DirectoryRecordCollection
 }
 
 func (pvd *PrimaryVolumeDescriptor) VolumeIdentifier() string {

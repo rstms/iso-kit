@@ -16,6 +16,7 @@ const SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE = consts.ISO9660_SECTOR_SIZE - c
 type SupplementaryVolumeDescriptor struct {
 	VolumeDescriptorHeader
 	SupplementaryVolumeDescriptorBody
+	DirectoryRecordCollection
 }
 
 func (d *SupplementaryVolumeDescriptor) VolumeIdentifier() string {

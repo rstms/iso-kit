@@ -90,15 +90,14 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	}
 
 	// Handle walking the pvd directory records
-	pvdDirectoryRecords, err := p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
+	pvd.DirectoryRecords, err = p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
 	if err != nil {
 		return nil, err
 	}
 
 	// Handle walking the svd directory records
-	var svdDirectoryRecords []*directory.DirectoryRecord
-	if len(svds) > 0 {
-		svdDirectoryRecords, err = p.WalkDirectoryRecords(svds[0].RootDirectoryRecord)
+	for _, svd := range svds {
+		svd.DirectoryRecords, err = p.WalkDirectoryRecords(svd.RootDirectoryRecord)
 		if err != nil {
 			return nil, err
 		}
@@ -137,6 +136,14 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	volumeDescSet := &descriptor.VolumeDescriptorSet{
+		Primary:       pvd,
+		Supplementary: svds,
+		Partition:     partitionvds,
+		Boot:          bootRecord,
+		Terminator:    term,
 	}
 
 	iso := &ISO9660{
@@ -280,14 +287,14 @@ type ISO9660 struct {
 	createOptions *option.CreateOptions
 	// System Area
 	systemArea systemarea.SystemArea
-	// Boot Record Descriptor
-	bootRecord *descriptor.BootRecordDescriptor
-	// Partition Volume Descriptor(s)
-	partitionvds []*descriptor.VolumePartitionDescriptor
-	// Primary Volume Descriptor
-	pvd *descriptor.PrimaryVolumeDescriptor
-	// Supplementary Volume Descriptors
-	svds []*descriptor.SupplementaryVolumeDescriptor
+	// Volume Descriptor Set
+	volumeDescriptorSet *descriptor.VolumeDescriptorSet
+	// Path Tables
+	pathTables []*pathtable.PathTable
+	// Directory Records
+
+	// TODO: ---- REVISIT BELOW THIS POINT
+
 	// Pointer to the preferred Volume Descriptor
 	activeVD descriptor.VolumeDescriptor
 	// PVD Directory Records

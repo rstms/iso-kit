@@ -1,8 +1,9 @@
 package descriptor
 
 type VolumeDescriptorSet struct {
-	Primary       *PrimaryVolumeDescriptor
-	Supplementary []*SupplementaryVolumeDescriptor
 	Boot          *BootRecordDescriptor
+	Primary       *PrimaryVolumeDescriptor
+	Partition     []*VolumePartitionDescriptor
+	Supplementary []*SupplementaryVolumeDescriptor
 	Terminator    *VolumeDescriptorSetTerminator
 }
