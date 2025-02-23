@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/helpers"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"time"
 )
 
@@ -118,6 +119,39 @@ type ExtendedAttributeRecord struct {
 	// the field immediately following the last byte of the preceding escape sequence. Any unused positions following
 	// the last escape sequence shall be set to (00). BP (251 + LEN_AU) to (250 + LEN_ESC + LEN_AU
 	EscapeSequences []byte `json:"escape_sequences"`
+	// --- Fields that are not part of the ISO9660 object ---
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
+}
+
+func (ear *ExtendedAttributeRecord) Type() string {
+	return "Extended Attribute Record"
+}
+
+func (ear *ExtendedAttributeRecord) Name() string {
+	return "Extended Attribute Record"
+}
+
+func (ear *ExtendedAttributeRecord) Description() string {
+	return ""
+}
+
+func (ear *ExtendedAttributeRecord) Properties() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+func (ear *ExtendedAttributeRecord) Offset() int64 {
+	return ear.ObjectLocation
+}
+
+func (ear *ExtendedAttributeRecord) Size() int {
+	return int(ear.RecordLength)
+}
+
+func (ear *ExtendedAttributeRecord) GetObjects() []info.ImageObject {
+	return []info.ImageObject{ear}
 }
 
 // Marshal converts the ExtendedAttributeRecord into its on‑disk byte representation.

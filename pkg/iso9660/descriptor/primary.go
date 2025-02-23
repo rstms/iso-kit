@@ -7,6 +7,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/helpers"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"strings"
 	"time"
@@ -40,6 +41,22 @@ type PrimaryVolumeDescriptor struct {
 	VolumeDescriptorHeader
 	PrimaryVolumeDescriptorBody
 	DirectoryRecordCollection
+}
+
+func (pvd *PrimaryVolumeDescriptor) DescriptorType() VolumeDescriptorType {
+	return TYPE_PRIMARY_DESCRIPTOR
+}
+
+func (pvd *PrimaryVolumeDescriptor) LocationOfPathTableL() uint32 {
+	return pvd.PrimaryVolumeDescriptorBody.LocationOfTypeLPathTable
+}
+
+func (pvd *PrimaryVolumeDescriptor) LocationOfPathTableM() uint32 {
+	return pvd.PrimaryVolumeDescriptorBody.LocationOfTypeMPathTable
+}
+
+func (pvd *PrimaryVolumeDescriptor) PathTableSize() uint32 {
+	return pvd.PrimaryVolumeDescriptorBody.PathTableSize
 }
 
 func (pvd *PrimaryVolumeDescriptor) VolumeIdentifier() string {
@@ -111,15 +128,23 @@ func (pvd *PrimaryVolumeDescriptor) RootDirectory() *directory.DirectoryRecord {
 	return pvd.PrimaryVolumeDescriptorBody.RootDirectoryRecord
 }
 
-func (pvd *PrimaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {
+func (pvd *PrimaryVolumeDescriptor) GetObjects() []info.ImageObject {
+	objects := []info.ImageObject{pvd}
+	for _, record := range pvd.DirectoryRecords {
+		objects = append(objects, record.GetObjects()...)
+	}
+	return objects
+}
+
+func (pvd *PrimaryVolumeDescriptor) Marshal() ([]byte, error) {
 	// Marshal the VolumeDescriptorHeader and PrimaryVolumeDescriptorBody.
 	headerBytes, err := pvd.VolumeDescriptorHeader.Marshal()
 	if err != nil {
-		return [consts.ISO9660_SECTOR_SIZE]byte{}, fmt.Errorf("failed to marshal VolumeDescriptorHeader: %w", err)
+		return []byte{}, fmt.Errorf("failed to marshal VolumeDescriptorHeader: %w", err)
 	}
 	bodyBytes, err := pvd.PrimaryVolumeDescriptorBody.Marshal()
 	if err != nil {
-		return [consts.ISO9660_SECTOR_SIZE]byte{}, fmt.Errorf("failed to marshal PrimaryVolumeDescriptorBody: %w", err)
+		return []byte{}, fmt.Errorf("failed to marshal PrimaryVolumeDescriptorBody: %w", err)
 	}
 
 	// Combine the header and body into a single 2048-byte slice.
@@ -127,7 +152,7 @@ func (pvd *PrimaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte,
 	copy(data[:consts.ISO9660_VOLUME_DESC_HEADER_SIZE], headerBytes[:])
 	copy(data[consts.ISO9660_VOLUME_DESC_HEADER_SIZE:], bodyBytes[:])
 
-	return data, nil
+	return data[:], nil
 }
 
 func (pvd *PrimaryVolumeDescriptor) Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) error {
@@ -270,13 +295,45 @@ type PrimaryVolumeDescriptorBody struct {
 	ApplicationUse [consts.ISO9660_APPLICATION_USE_SIZE]byte `json:"application_use"`
 	// Reserved Field 2 is unused and all bytes should be set to 0x00.
 	ReservedField2 [PRIMARY_RESERVED_FIELD2_SIZE]byte `json:"reserved_field_2"`
+	// --- Fields that are not part of the ISO9660 object ---
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
 	// Logger
 	Logger *logging.Logger
 }
 
+func (pvdb *PrimaryVolumeDescriptorBody) Type() string {
+	return "Volume Descriptor"
+}
+
+func (pvdb *PrimaryVolumeDescriptorBody) Name() string {
+	return "Primary Volume Descriptor"
+}
+
+func (pvdb *PrimaryVolumeDescriptorBody) Description() string {
+	// TODO: Probably remove or don't use or use to describe what this type of object is? Properties seems to have a
+	//       lot of overlap with what I was thinking of using this for but properties is more flexible for the user.
+	return fmt.Sprintf("%s: %d sectors", pvdb.VolumeIdentifier, pvdb.VolumeSpaceSize)
+}
+
+func (pvdb *PrimaryVolumeDescriptorBody) Properties() map[string]interface{} {
+	// TODO: Create logic to populate the properties that are in use out of things like the preparer, publisher, system etc...
+	return map[string]interface{}{}
+}
+
+func (pvdb *PrimaryVolumeDescriptorBody) Offset() int64 {
+	return pvdb.ObjectLocation
+}
+
+func (pvdb *PrimaryVolumeDescriptorBody) Size() int {
+	return int(pvdb.ObjectSize)
+}
+
 // Marshal converts the PrimaryVolumeDescriptorBody into its 2041‑byte on‑disk representation,
 // ensuring that all string fields are padded with consts.ISO9660_FILLER (' ').
-func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte, error) {
+func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([]byte, error) {
 	var data [PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte
 	offset := 0
 
@@ -345,14 +402,14 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 
 	// 15. rootDirectoryRecord: 34 bytes.
 	if pvdb.RootDirectoryRecord == nil {
-		return data, fmt.Errorf("rootDirectoryRecord is nil")
+		return data[:], fmt.Errorf("rootDirectoryRecord is nil")
 	}
 	rdBytes, err := pvdb.RootDirectoryRecord.Marshal()
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal rootDirectoryRecord: %w", err)
+		return data[:], fmt.Errorf("failed to marshal rootDirectoryRecord: %w", err)
 	}
 	if len(rdBytes) != 34 {
-		return data, fmt.Errorf("expected 34 bytes for rootDirectoryRecord, got %d", len(rdBytes))
+		return data[:], fmt.Errorf("expected 34 bytes for rootDirectoryRecord, got %d", len(rdBytes))
 	}
 	copy(data[offset:offset+34], rdBytes)
 	offset += 34
@@ -395,7 +452,7 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	// 23. volumeCreationDateAndTime: 17 bytes.
 	vcdBytes, err := encoding.MarshalDateTime(pvdb.VolumeCreationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeCreationDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeCreationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vcdBytes[:])
 	offset += 17
@@ -403,7 +460,7 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	// 24. volumeModificationDateAndTime: 17 bytes.
 	vmdBytes, err := encoding.MarshalDateTime(pvdb.VolumeModificationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeModificationDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeModificationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vmdBytes[:])
 	offset += 17
@@ -411,7 +468,7 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	// 25. volumeExpirationDateAndTime: 17 bytes.
 	vedBytes, err := encoding.MarshalDateTime(pvdb.VolumeExpirationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeExpirationDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeExpirationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vedBytes[:])
 	offset += 17
@@ -419,7 +476,7 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	// 26. volumeEffectiveDateAndTime: 17 bytes.
 	vefBytes, err := encoding.MarshalDateTime(pvdb.VolumeEffectiveDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeEffectiveDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeEffectiveDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vefBytes[:])
 	offset += 17
@@ -441,11 +498,11 @@ func (pvdb *PrimaryVolumeDescriptorBody) Marshal() ([PRIMARY_VOLUME_DESCRIPTOR_B
 	offset += 653
 
 	if offset != PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE {
-		return data, fmt.Errorf("marshal error: expected offset %d, got %d",
+		return data[:], fmt.Errorf("marshal error: expected offset %d, got %d",
 			PRIMARY_VOLUME_DESCRIPTOR_BODY_SIZE, offset)
 	}
 
-	return data, nil
+	return data[:], nil
 }
 
 // Unmarshal parses a 2041-byte slice into the PrimaryVolumeDescriptorBody.

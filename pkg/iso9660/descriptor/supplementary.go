@@ -6,6 +6,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"strings"
 	"time"
@@ -18,6 +19,22 @@ type SupplementaryVolumeDescriptor struct {
 	VolumeDescriptorHeader
 	SupplementaryVolumeDescriptorBody
 	DirectoryRecordCollection
+}
+
+func (d *SupplementaryVolumeDescriptor) DescriptorType() VolumeDescriptorType {
+	return TYPE_SUPPLEMENTARY_DESCRIPTOR
+}
+
+func (d *SupplementaryVolumeDescriptor) LocationOfPathTableL() uint32 {
+	return d.SupplementaryVolumeDescriptorBody.LocationOfTypeMPathTable
+}
+
+func (d *SupplementaryVolumeDescriptor) LocationOfPathTableM() uint32 {
+	return d.SupplementaryVolumeDescriptorBody.LocationOfTypeMPathTable
+}
+
+func (d *SupplementaryVolumeDescriptor) PathTableSize() uint32 {
+	return d.SupplementaryVolumeDescriptorBody.PathTableSize
 }
 
 func (d *SupplementaryVolumeDescriptor) VolumeIdentifier() string {
@@ -85,15 +102,23 @@ func (d *SupplementaryVolumeDescriptor) RootDirectory() *directory.DirectoryReco
 	return d.SupplementaryVolumeDescriptorBody.RootDirectoryRecord
 }
 
+func (d *SupplementaryVolumeDescriptor) GetObjects() []info.ImageObject {
+	objects := []info.ImageObject{d}
+	for _, record := range d.DirectoryRecords {
+		objects = append(objects, record)
+	}
+	return objects
+}
+
 // Marshal converts the entire SupplementaryVolumeDescriptor into a 2048-byte on-disk sector.
-func (d *SupplementaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {
+func (d *SupplementaryVolumeDescriptor) Marshal() ([]byte, error) {
 	var sector [consts.ISO9660_SECTOR_SIZE]byte
 	offset := 0
 
 	// Marshal the header (first 7 bytes).
 	headerBytes, err := d.VolumeDescriptorHeader.Marshal()
 	if err != nil {
-		return sector, fmt.Errorf("failed to marshal header: %w", err)
+		return sector[:], fmt.Errorf("failed to marshal header: %w", err)
 	}
 	copy(sector[0:7], headerBytes[:])
 	offset += 7
@@ -101,7 +126,7 @@ func (d *SupplementaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]b
 	// Marshal the body.
 	bodyBytes, err := d.SupplementaryVolumeDescriptorBody.Marshal()
 	if err != nil {
-		return sector, fmt.Errorf("failed to marshal body: %w", err)
+		return sector[:], fmt.Errorf("failed to marshal body: %w", err)
 	}
 	copy(sector[offset:offset+SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE], bodyBytes[:])
 	offset += SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE
@@ -111,7 +136,7 @@ func (d *SupplementaryVolumeDescriptor) Marshal() ([consts.ISO9660_SECTOR_SIZE]b
 		sector[i] = 0
 	}
 
-	return sector, nil
+	return sector[:], nil
 }
 
 // Unmarshal parses a 2048-byte sector into the SupplementaryVolumeDescriptor.
@@ -267,12 +292,41 @@ type SupplementaryVolumeDescriptorBody struct {
 	ApplicationUse [consts.ISO9660_APPLICATION_USE_SIZE]byte `json:"application_use"`
 	// Reserved Field 2. Values should all be 0x00
 	ReservedField2 [653]byte `json:"reserved_field_2"`
+	// --- Fields that are not part of the ISO9660 object ---
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
 	// Logger
 	Logger *logging.Logger
 }
 
+func (svdb *SupplementaryVolumeDescriptorBody) Type() string {
+	return "Volume Descriptor"
+}
+
+func (svdb *SupplementaryVolumeDescriptorBody) Name() string {
+	return "Supplementary Volume Descriptor"
+}
+
+func (svdb *SupplementaryVolumeDescriptorBody) Description() string {
+	return fmt.Sprintf("Supplementary Volume Descriptor for volume %s", svdb.VolumeIdentifier)
+}
+
+func (svdb *SupplementaryVolumeDescriptorBody) Properties() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+func (svdb *SupplementaryVolumeDescriptorBody) Offset() int64 {
+	return svdb.ObjectLocation
+}
+
+func (svdb *SupplementaryVolumeDescriptorBody) Size() int {
+	return int(svdb.ObjectSize)
+}
+
 // Marshal converts the SupplementaryVolumeDescriptorBody into its fixed‑size on‑disk representation.
-func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte, error) {
+func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([]byte, error) {
 	var data [SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE]byte
 	offset := 0
 
@@ -283,7 +337,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 2. systemIdentifier: 32 bytes (UCS2).
 	sysID := encoding.EncodeUCS2BigEndian(svdb.SystemIdentifier)
 	if len(sysID) > 32 {
-		return data, fmt.Errorf("systemIdentifier (%d bytes) exceeds 32 bytes after UCS2 encoding", len(sysID))
+		return data[:], fmt.Errorf("systemIdentifier (%d bytes) exceeds 32 bytes after UCS2 encoding", len(sysID))
 	}
 	copy(data[offset:offset+len(sysID)], sysID)
 	offset += 32
@@ -291,7 +345,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 3. volumeIdentifier: 32 bytes (UCS2).
 	volID := encoding.EncodeUCS2BigEndian(svdb.VolumeIdentifier)
 	if len(volID) > 32 {
-		return data, fmt.Errorf("volumeIdentifier (%d bytes) exceeds 32 bytes after UCS2 encoding", len(volID))
+		return data[:], fmt.Errorf("volumeIdentifier (%d bytes) exceeds 32 bytes after UCS2 encoding", len(volID))
 	}
 	copy(data[offset:offset+len(volID)], volID)
 	offset += 32
@@ -343,14 +397,14 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 
 	// 15. rootDirectoryRecord: 34 bytes.
 	if svdb.RootDirectoryRecord == nil {
-		return data, fmt.Errorf("rootDirectoryRecord is nil")
+		return data[:], fmt.Errorf("rootDirectoryRecord is nil")
 	}
 	rdBytes, err := svdb.RootDirectoryRecord.Marshal()
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal rootDirectoryRecord: %w", err)
+		return data[:], fmt.Errorf("failed to marshal rootDirectoryRecord: %w", err)
 	}
 	if len(rdBytes) != 34 {
-		return data, fmt.Errorf("expected 34 bytes for rootDirectoryRecord, got %d", len(rdBytes))
+		return data[:], fmt.Errorf("expected 34 bytes for rootDirectoryRecord, got %d", len(rdBytes))
 	}
 	copy(data[offset:offset+34], rdBytes)
 	offset += 34
@@ -358,7 +412,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 16. volumeSetIdentifier: 128 bytes (UCS2).
 	vsi := encoding.EncodeUCS2BigEndian(svdb.VolumeSetIdentifier)
 	if len(vsi) > 128 {
-		return data, fmt.Errorf("volumeSetIdentifier exceeds 128 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("volumeSetIdentifier exceeds 128 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(vsi)], vsi)
 	offset += 128
@@ -366,7 +420,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 17. publisherIdentifier: 128 bytes (UCS2).
 	pubID := encoding.EncodeUCS2BigEndian(svdb.PublisherIdentifier)
 	if len(pubID) > 128 {
-		return data, fmt.Errorf("publisherIdentifier exceeds 128 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("publisherIdentifier exceeds 128 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(pubID)], pubID)
 	offset += 128
@@ -374,7 +428,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 18. dataPreparerIdentifier: 128 bytes (UCS2).
 	dpID := encoding.EncodeUCS2BigEndian(svdb.DataPreparerIdentifier)
 	if len(dpID) > 128 {
-		return data, fmt.Errorf("dataPreparerIdentifier exceeds 128 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("dataPreparerIdentifier exceeds 128 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(dpID)], dpID)
 	offset += 128
@@ -382,7 +436,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 19. applicationIdentifier: 128 bytes (UCS2).
 	appID := encoding.EncodeUCS2BigEndian(svdb.ApplicationIdentifier)
 	if len(appID) > 128 {
-		return data, fmt.Errorf("applicationIdentifier exceeds 128 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("applicationIdentifier exceeds 128 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(appID)], appID)
 	offset += 128
@@ -390,7 +444,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 20. copyrightFileIdentifier: 37 bytes (UCS2).
 	cfID := encoding.EncodeUCS2BigEndian(svdb.CopyrightFileIdentifier)
 	if len(cfID) > 37 {
-		return data, fmt.Errorf("copyrightFileIdentifier exceeds 37 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("copyrightFileIdentifier exceeds 37 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(cfID)], cfID)
 	offset += 37
@@ -398,7 +452,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 21. abstractFileIdentifier: 37 bytes (UCS2).
 	afID := encoding.EncodeUCS2BigEndian(svdb.AbstractFileIdentifier)
 	if len(afID) > 37 {
-		return data, fmt.Errorf("abstractFileIdentifier exceeds 37 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("abstractFileIdentifier exceeds 37 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(afID)], afID)
 	offset += 37
@@ -406,7 +460,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 22. bibliographicFileIdentifier: 37 bytes (UCS2).
 	bfID := encoding.EncodeUCS2BigEndian(svdb.BibliographicFileIdentifier)
 	if len(bfID) > 37 {
-		return data, fmt.Errorf("bibliographicFileIdentifier exceeds 37 bytes after UCS2 encoding")
+		return data[:], fmt.Errorf("bibliographicFileIdentifier exceeds 37 bytes after UCS2 encoding")
 	}
 	copy(data[offset:offset+len(bfID)], bfID)
 	offset += 37
@@ -414,7 +468,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 23. volumeCreationDateAndTime: 17 bytes.
 	vcdBytes, err := encoding.MarshalDateTime(svdb.VolumeCreationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeCreationDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeCreationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vcdBytes[:])
 	offset += 17
@@ -422,7 +476,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 24. volumeModificationDateAndTime: 17 bytes.
 	vmdBytes, err := encoding.MarshalDateTime(svdb.VolumeModificationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeModificationDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeModificationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vmdBytes[:])
 	offset += 17
@@ -430,7 +484,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 25. volumeExpirationDateAndTime: 17 bytes.
 	vedBytes, err := encoding.MarshalDateTime(svdb.VolumeExpirationDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeExpirationDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeExpirationDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vedBytes[:])
 	offset += 17
@@ -438,7 +492,7 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	// 26. volumeEffectiveDateAndTime: 17 bytes.
 	vefBytes, err := encoding.MarshalDateTime(svdb.VolumeEffectiveDateAndTime)
 	if err != nil {
-		return data, fmt.Errorf("failed to marshal volumeEffectiveDateAndTime: %w", err)
+		return data[:], fmt.Errorf("failed to marshal volumeEffectiveDateAndTime: %w", err)
 	}
 	copy(data[offset:offset+17], vefBytes[:])
 	offset += 17
@@ -460,10 +514,10 @@ func (svdb *SupplementaryVolumeDescriptorBody) Marshal() ([SUPPLEMENTARY_VOLUME_
 	offset += len(svdb.ReservedField2)
 
 	if offset != SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE {
-		return data, fmt.Errorf("marshal error: expected offset %d, got %d", SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE, offset)
+		return data[:], fmt.Errorf("marshal error: expected offset %d, got %d", SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE, offset)
 	}
 
-	return data, nil
+	return data[:], nil
 }
 
 // Unmarshal parses a SUPPLEMENTARY_VOLUME_DESCRIPTOR_BODY_SIZE-byte slice into the SupplementaryVolumeDescriptorBody.
@@ -532,19 +586,19 @@ func (svdb *SupplementaryVolumeDescriptorBody) Unmarshal(data []byte) error {
 	svdb.PathTableSize = pathTableSize
 	offset += 8
 
-	// 11. Location of Type L Path Table: 4 bytes
+	// 11. Location of DescriptorType L Path Table: 4 bytes
 	svdb.LocationOfTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 12. Location of Optional Type L Path Table: 4 bytes
+	// 12. Location of Optional DescriptorType L Path Table: 4 bytes
 	svdb.LocationOfOptionalTypeLPathTable = binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 13. Location of Type M Path Table: 4 bytes (Big-endian)
+	// 13. Location of DescriptorType M Path Table: 4 bytes (Big-endian)
 	svdb.LocationOfTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
-	// 14. Location of Optional Type M Path Table: 4 bytes (Big-endian)
+	// 14. Location of Optional DescriptorType M Path Table: 4 bytes (Big-endian)
 	svdb.LocationOfOptionalTypeMPathTable = binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
 

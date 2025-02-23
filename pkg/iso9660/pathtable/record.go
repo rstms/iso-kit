@@ -4,21 +4,29 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"io"
 )
 
-func NewPathTable(reader io.ReaderAt, location uint32, size int, littleEndian bool) (*PathTable, error) {
+func NewPathTable(reader io.ReaderAt, location uint32, size int, source string, littleEndian bool) (*PathTable, error) {
 	data := make([]byte, size)
 	_, err := reader.ReadAt(data, int64(location)*consts.ISO9660_SECTOR_SIZE)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read path table: %w", err)
 	}
 
-	pt := &PathTable{}
+	pt := &PathTable{
+		source:         source,
+		littleEndian:   littleEndian,
+		ObjectLocation: int64(location),
+		ObjectSize:     uint32(size),
+	}
 	offset := 0
 
 	for offset < len(data) {
-		record := &PathTableRecord{}
+		record := &PathTableRecord{
+			littleEndian: littleEndian,
+		}
 		if err := record.Unmarshal(data[offset:], littleEndian); err != nil {
 			return nil, err
 		}
@@ -37,15 +45,68 @@ func NewPathTable(reader io.ReaderAt, location uint32, size int, littleEndian bo
 
 // PathTable represents a full path table, containing multiple records.
 type PathTable struct {
-	Records []*PathTableRecord
+	Records      []*PathTableRecord
+	source       string
+	littleEndian bool
+	// --- Fields that are not part of the ISO9660 object ---
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
+}
+
+func (pt *PathTable) Type() string {
+	return "Path Table"
+}
+
+func (pt *PathTable) Name() string {
+	encoding := "Big-Endian"
+	if pt.littleEndian {
+		encoding = "Little-Endian"
+	}
+	return fmt.Sprintf("%s Path Table (%s)", encoding, pt.source)
+}
+
+func (pt *PathTable) Description() string {
+	return ""
+}
+
+func (pt *PathTable) Properties() map[string]interface{} {
+	encoding := "big-endian"
+	if pt.littleEndian {
+		encoding = "little-endian"
+	}
+
+	return map[string]interface{}{
+		"Records":  len(pt.Records),
+		"Source":   pt.source,
+		"Encoding": encoding,
+	}
+}
+
+func (pt *PathTable) Offset() int64 {
+	return pt.ObjectLocation * consts.ISO9660_SECTOR_SIZE
+}
+
+func (pt *PathTable) Size() int {
+	return int(pt.ObjectSize)
+}
+
+func (pt *PathTable) GetObjects() []info.ImageObject {
+	objects := []info.ImageObject{pt}
+	//TODO: Fix this
+	//for _, record := range pt.Records {
+	//	objects = append(objects, record.GetObjects()...)
+	//}
+	return objects
 }
 
 // Marshal converts a PathTable into a contiguous byte array.
-func (pt *PathTable) Marshal(littleEndian bool) ([]byte, error) {
+func (pt *PathTable) Marshal() ([]byte, error) {
 	var buf []byte
 
 	for _, record := range pt.Records {
-		recBytes, err := record.Marshal(littleEndian)
+		recBytes, err := record.Marshal()
 		if err != nil {
 			return nil, err
 		}
@@ -76,10 +137,47 @@ type PathTableRecord struct {
 	// calculated when marshalling to an array of bytes. When unmarshalling if the LengthOfFileIdentifier field is even
 	// then we make sure we skip the padding byte when we continue processing the following fields.
 	// Padding *byte `json:"padding" ----------
+	littleEndian bool
+	// --- Fields that are not part of the ISO9660 object ---
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
+}
+
+func (ptr *PathTableRecord) Type() string {
+	return "Path Table Record"
+}
+
+func (ptr *PathTableRecord) Name() string {
+	return ptr.DirectoryIdentifier
+}
+
+func (ptr *PathTableRecord) Description() string {
+	return ""
+}
+
+func (ptr *PathTableRecord) Properties() map[string]interface{} {
+	return map[string]interface{}{
+		"LocationOfExtent":      ptr.LocationOfExtent,
+		"ParentDirectoryNumber": ptr.ParentDirectoryNumber,
+	}
+}
+
+func (ptr *PathTableRecord) Offset() int64 {
+	return ptr.ObjectLocation
+}
+
+func (ptr *PathTableRecord) Size() int {
+	return int(ptr.ObjectSize)
+}
+
+func (ptr *PathTableRecord) GetObjects() []info.ImageObject {
+	return []info.ImageObject{ptr}
 }
 
 // Marshal converts a single PathTableRecord into a byte slice.
-func (ptr *PathTableRecord) Marshal(littleEndian bool) ([]byte, error) {
+func (ptr *PathTableRecord) Marshal() ([]byte, error) {
 	dirIDBytes := []byte(ptr.DirectoryIdentifier)
 	ptr.LengthOfDirectoryIdentifier = uint8(len(dirIDBytes))
 
@@ -96,14 +194,14 @@ func (ptr *PathTableRecord) Marshal(littleEndian bool) ([]byte, error) {
 	buf[offset] = ptr.ExtendedAttributeRecordLength
 	offset++
 
-	if littleEndian {
+	if ptr.littleEndian {
 		binary.LittleEndian.PutUint32(buf[offset:], ptr.LocationOfExtent)
 	} else {
 		binary.BigEndian.PutUint32(buf[offset:], ptr.LocationOfExtent)
 	}
 	offset += 4
 
-	if littleEndian {
+	if ptr.littleEndian {
 		binary.LittleEndian.PutUint16(buf[offset:], ptr.ParentDirectoryNumber)
 	} else {
 		binary.BigEndian.PutUint16(buf[offset:], ptr.ParentDirectoryNumber)

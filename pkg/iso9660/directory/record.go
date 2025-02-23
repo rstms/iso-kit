@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/extensions"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/extent"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"os"
 	"time"
@@ -83,8 +85,52 @@ type DirectoryRecord struct {
 	RockRidge *extensions.RockRidgeExtensions `json:"rock_ridge"`
 	// Joliet is a field to store if this record is from a volume with Joliet extensions
 	Joliet bool `json:"joliet"`
+	// --- Fields that are not part of the ISO9660 object ---
+	// File Extent
+	FileExtent *extent.FileExtent
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
 	// Logger
 	Logger *logging.Logger
+}
+
+func (dr *DirectoryRecord) Type() string {
+	return "Directory Record"
+}
+
+func (dr *DirectoryRecord) Name() string {
+	return dr.GetBestName(dr.RockRidge != nil)
+}
+
+func (dr *DirectoryRecord) Description() string {
+	return ""
+}
+
+func (dr *DirectoryRecord) Properties() map[string]interface{} {
+	return map[string]interface{}{
+		"ExtentLocation": dr.LocationOfExtent,
+		"ExtentSize":     dr.DataLength,
+		"IsDirectory":    dr.IsDirectory(),
+		"IsSpecial":      dr.IsSpecial(),
+	}
+}
+
+func (dr *DirectoryRecord) Offset() int64 {
+	return dr.ObjectLocation
+}
+
+func (dr *DirectoryRecord) Size() int {
+	return int(dr.ObjectSize)
+}
+
+func (dr *DirectoryRecord) GetObjects() []info.ImageObject {
+	objects := []info.ImageObject{dr}
+	if !dr.IsDirectory() && dr.FileExtent != nil {
+		objects = append(objects, dr.FileExtent.GetObjects()...)
+	}
+	return objects
 }
 
 // IsDirectory checks if the entry is a Directory

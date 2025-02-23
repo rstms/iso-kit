@@ -7,7 +7,6 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/boot"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/parser"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/pathtable"
@@ -18,6 +17,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -45,8 +45,6 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		opt(openOptions)
 	}
 
-	layout := info.NewISOLayout()
-
 	// Read the System Area
 	saBuf := [consts.ISO9660_SECTOR_SIZE * consts.ISO9660_SYSTEM_AREA_SECTORS]byte{}
 	if _, err := isoReader.ReadAt(saBuf[:], 0); err != nil {
@@ -55,11 +53,9 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	sa := systemarea.SystemArea{
 		Contents: saBuf,
 	}
-	layout.SystemAreaOffset = 0
-	layout.SystemAreaLength = consts.ISO9660_SYSTEM_AREA_SECTORS * consts.ISO9660_SECTOR_SIZE
 
 	// Create a parser
-	p := parser.NewParser(isoReader, layout, openOptions)
+	p := parser.NewParser(isoReader, openOptions)
 
 	// Read the boot record
 	bootRecord, err := p.GetBootRecord()
@@ -95,7 +91,10 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	}
 
 	// Mark the end of the volume descriptors
-	_, _ = p.GetVolumeDescriptorSetTerminator()
+	term, err := p.GetVolumeDescriptorSetTerminator()
+	if err != nil {
+		return nil, err
+	}
 
 	// Handle walking the pvd directory records
 	pvd.DirectoryRecords, err = p.WalkDirectoryRecords(pvd.RootDirectoryRecord)
@@ -113,37 +112,24 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 
 	// Handle processing volume descriptor
 	var filesystemEntries []*filesystem.FileSystemEntry
-	var activeVD descriptor.VolumeDescriptor
-	var activeDirectoryRecords = &pvdDirectoryRecords
 	if openOptions.PreferJoliet && len(svds) > 0 {
 		// Open the Joliet filesystem
 		filesystemEntries, err = p.BuildFileSystemEntries(svds[0].RootDirectoryRecord, false)
-		activeDirectoryRecords = &svdDirectoryRecords
-		activeVD = svds[0]
 	} else {
 		filesystemEntries, err = p.BuildFileSystemEntries(pvd.RootDirectoryRecord, openOptions.RockRidgeEnabled)
-		activeVD = pvd
 	}
 
 	// Handle the path tables
-	pvdLPathTable, err := pathtable.NewPathTable(isoReader, pvd.LocationOfTypeLPathTable, int(pvd.PathTableSize), true)
+	tables, err := p.GetPathTables(pvd)
 	if err != nil {
 		return nil, err
 	}
-	pvdMPathTable, err := pathtable.NewPathTable(isoReader, pvd.LocationOfTypeMPathTable, int(pvd.PathTableSize), false)
-	if err != nil {
-		return nil, err
-	}
-	var svdLPathTable, svdMPathTable *pathtable.PathTable
-	if len(svds) > 0 {
-		svdLPathTable, err = pathtable.NewPathTable(isoReader, svds[0].LocationOfTypeLPathTable, int(svds[0].PathTableSize), true)
+	for _, svd := range svds {
+		svdTables, err := p.GetPathTables(svd)
 		if err != nil {
 			return nil, err
 		}
-		svdMPathTable, err = pathtable.NewPathTable(isoReader, svds[0].LocationOfTypeMPathTable, int(svds[0].PathTableSize), false)
-		if err != nil {
-			return nil, err
-		}
+		tables = append(tables, svdTables...)
 	}
 
 	volumeDescSet := &descriptor.VolumeDescriptorSet{
@@ -155,25 +141,15 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 	}
 
 	iso := &ISO9660{
-		isoReader:              isoReader,
-		openOptions:            openOptions,
-		systemArea:             sa,
-		bootRecord:             bootRecord,
-		pvd:                    pvd,
-		svds:                   svds,
-		partitionvds:           partitionvds,
-		pvdDirectoryRecords:    pvdDirectoryRecords,
-		svdDirectoryRecords:    svdDirectoryRecords,
-		activeDirectoryRecords: activeDirectoryRecords,
-		pvdLPathTable:          pvdLPathTable,
-		pvdMPathTable:          pvdMPathTable,
-		svdLPathTable:          svdLPathTable,
-		svdMPathTable:          svdMPathTable,
-		filesystemEntries:      filesystemEntries,
-		activeVD:               activeVD,
-		elTorito:               et,
-		layout:                 layout,
-		logger:                 openOptions.Logger,
+		isoReader:           isoReader,
+		openOptions:         openOptions, //TODO: Work on making composite options that limit users ability to create based on context but have a single set behind the scenes
+		systemArea:          sa,
+		volumeDescriptorSet: volumeDescSet,
+		pathTables:          tables,
+		filesystemEntries:   filesystemEntries,
+		elTorito:            et,
+		logger:              openOptions.Logger,
+		isPacked:            true,
 	}
 
 	return iso, nil
@@ -189,84 +165,84 @@ func Create(name string, opts ...option.CreateOption) (*ISO9660, error) {
 		opt(createOptions)
 	}
 
-	// Create a root directory record
-	rootDir := &directory.DirectoryRecord{
-		FileIdentifier:                "\x00",
-		LengthOfDirectoryRecord:       0,
-		ExtendedAttributeRecordLength: 0,
-		LocationOfExtent:              0, // Updated when writing directory structures
-		DataLength:                    0,
-		RecordingDateAndTime:          time.Now(),
-		FileFlags:                     directory.FileFlags{Directory: true},
-		VolumeSequenceNumber:          1, // Volume sequence should be set
-	}
+	//// Create a root directory record
+	//rootDir := &directory.DirectoryRecord{
+	//	FileIdentifier:                "\x00",
+	//	LengthOfDirectoryRecord:       0,
+	//	ExtendedAttributeRecordLength: 0,
+	//	LocationOfExtent:              0, // Updated when writing directory structures
+	//	DataLength:                    0,
+	//	RecordingDateAndTime:          time.Now(),
+	//	FileFlags:                     directory.FileFlags{Directory: true},
+	//	VolumeSequenceNumber:          1, // Volume sequence should be set
+	//}
 
-	// 1: Create system area (First 16 sectors reserved, boot record might go here)
-	sa := systemarea.SystemArea{}
-
-	// 2: Create volume descriptor set
-	pvd := descriptor.PrimaryVolumeDescriptor{
-		VolumeDescriptorHeader: descriptor.VolumeDescriptorHeader{
-			VolumeDescriptorType:    descriptor.TYPE_PRIMARY_DESCRIPTOR,
-			StandardIdentifier:      consts.ISO9660_STD_IDENTIFIER,
-			VolumeDescriptorVersion: consts.ISO9660_VOLUME_DESC_VERSION,
-		},
-		PrimaryVolumeDescriptorBody: descriptor.PrimaryVolumeDescriptorBody{
-			SystemIdentifier:              "",
-			VolumeIdentifier:              name,
-			VolumeSpaceSize:               0, // Set later
-			VolumeSetSize:                 1, // Single volume
-			VolumeSequenceNumber:          1,
-			LogicalBlockSize:              consts.ISO9660_SECTOR_SIZE,
-			RootDirectoryRecord:           rootDir,
-			VolumeSetIdentifier:           "",
-			PublisherIdentifier:           "",
-			DataPreparerIdentifier:        createOptions.Preparer,
-			ApplicationIdentifier:         "",
-			VolumeCreationDateAndTime:     time.Now(),
-			VolumeModificationDateAndTime: time.Now(),
-			VolumeExpirationDateAndTime:   time.Now(),
-			VolumeEffectiveDateAndTime:    time.Now(),
-			FileStructureVersion:          1,
-		},
-	}
-
-	// 2.2: Create supplementary volume descriptor (if Joliet is enabled)
-	var svds []*descriptor.SupplementaryVolumeDescriptor
-	if createOptions.JolietEnabled {
-		svd := descriptor.SupplementaryVolumeDescriptor{
-			VolumeDescriptorHeader: descriptor.VolumeDescriptorHeader{
-				VolumeDescriptorType:    descriptor.TYPE_SUPPLEMENTARY_DESCRIPTOR,
-				StandardIdentifier:      consts.ISO9660_STD_IDENTIFIER,
-				VolumeDescriptorVersion: consts.ISO9660_VOLUME_DESC_VERSION,
-			},
-			SupplementaryVolumeDescriptorBody: descriptor.SupplementaryVolumeDescriptorBody{
-				VolumeFlags:                   0,
-				SystemIdentifier:              "",
-				VolumeIdentifier:              name,
-				VolumeSpaceSize:               [8]byte{}, // Needs to be set later
-				RootDirectoryRecord:           rootDir,
-				VolumeSetIdentifier:           "",
-				PublisherIdentifier:           "",
-				DataPreparerIdentifier:        createOptions.Preparer,
-				ApplicationIdentifier:         "",
-				VolumeCreationDateAndTime:     time.Now(),
-				VolumeModificationDateAndTime: time.Now(),
-				VolumeExpirationDateAndTime:   time.Now(),
-				VolumeEffectiveDateAndTime:    time.Now(),
-				FileStructureVersion:          1,
-			},
-		}
-		// Copy the Joliet escape sequence (%/@ for Level 3)
-		copy(svd.SupplementaryVolumeDescriptorBody.EscapeSequences[:], []byte(consts.JOLIET_LEVEL_3_ESCAPE))
-		svds = append(svds, &svd)
-	}
+	//// 1: Create system area (First 16 sectors reserved, boot record might go here)
+	//sa := systemarea.SystemArea{}
+	//
+	//// 2: Create volume descriptor set
+	//pvd := descriptor.PrimaryVolumeDescriptor{
+	//	VolumeDescriptorHeader: descriptor.VolumeDescriptorHeader{
+	//		VolumeDescriptorType:    descriptor.TYPE_PRIMARY_DESCRIPTOR,
+	//		StandardIdentifier:      consts.ISO9660_STD_IDENTIFIER,
+	//		VolumeDescriptorVersion: consts.ISO9660_VOLUME_DESC_VERSION,
+	//	},
+	//	PrimaryVolumeDescriptorBody: descriptor.PrimaryVolumeDescriptorBody{
+	//		SystemIdentifier:              "",
+	//		VolumeIdentifier:              name,
+	//		VolumeSpaceSize:               0, // Set later
+	//		VolumeSetSize:                 1, // Single volume
+	//		VolumeSequenceNumber:          1,
+	//		LogicalBlockSize:              consts.ISO9660_SECTOR_SIZE,
+	//		RootDirectoryRecord:           rootDir,
+	//		VolumeSetIdentifier:           "",
+	//		PublisherIdentifier:           "",
+	//		DataPreparerIdentifier:        createOptions.Preparer,
+	//		ApplicationIdentifier:         "",
+	//		VolumeCreationDateAndTime:     time.Now(),
+	//		VolumeModificationDateAndTime: time.Now(),
+	//		VolumeExpirationDateAndTime:   time.Now(),
+	//		VolumeEffectiveDateAndTime:    time.Now(),
+	//		FileStructureVersion:          1,
+	//	},
+	//}
+	//
+	//// 2.2: Create supplementary volume descriptor (if Joliet is enabled)
+	//var svds []*descriptor.SupplementaryVolumeDescriptor
+	//if createOptions.JolietEnabled {
+	//	svd := descriptor.SupplementaryVolumeDescriptor{
+	//		VolumeDescriptorHeader: descriptor.VolumeDescriptorHeader{
+	//			VolumeDescriptorType:    descriptor.TYPE_SUPPLEMENTARY_DESCRIPTOR,
+	//			StandardIdentifier:      consts.ISO9660_STD_IDENTIFIER,
+	//			VolumeDescriptorVersion: consts.ISO9660_VOLUME_DESC_VERSION,
+	//		},
+	//		SupplementaryVolumeDescriptorBody: descriptor.SupplementaryVolumeDescriptorBody{
+	//			VolumeFlags:                   0,
+	//			SystemIdentifier:              "",
+	//			VolumeIdentifier:              name,
+	//			VolumeSpaceSize:               [8]byte{}, // Needs to be set later
+	//			RootDirectoryRecord:           rootDir,
+	//			VolumeSetIdentifier:           "",
+	//			PublisherIdentifier:           "",
+	//			DataPreparerIdentifier:        createOptions.Preparer,
+	//			ApplicationIdentifier:         "",
+	//			VolumeCreationDateAndTime:     time.Now(),
+	//			VolumeModificationDateAndTime: time.Now(),
+	//			VolumeExpirationDateAndTime:   time.Now(),
+	//			VolumeEffectiveDateAndTime:    time.Now(),
+	//			FileStructureVersion:          1,
+	//		},
+	//	}
+	//	// Copy the Joliet escape sequence (%/@ for Level 3)
+	//	copy(svd.SupplementaryVolumeDescriptorBody.EscapeSequences[:], []byte(consts.JOLIET_LEVEL_3_ESCAPE))
+	//	svds = append(svds, &svd)
+	//}
 
 	// 2.3: Create volume partition descriptor(s) (not used often in basic ISO9660)
-	var pvds []*descriptor.VolumePartitionDescriptor
-
-	// 2.4: Create boot record (only needed for bootable ISOs)
-	br := descriptor.BootRecordDescriptor{}
+	//var pvds []*descriptor.VolumePartitionDescriptor
+	//
+	//// 2.4: Create boot record (only needed for bootable ISOs)
+	//br := descriptor.BootRecordDescriptor{}
 
 	// 3: Initialize path tables (Will need to be generated)
 	// Placeholder for path table setup
@@ -276,20 +252,19 @@ func Create(name string, opts ...option.CreateOption) (*ISO9660, error) {
 
 	// Build ISO structure
 	iso := &ISO9660{
-		createOptions: createOptions,
-		systemArea:    sa,
-		bootRecord:    &br,
-		pvd:           &pvd,
-		svds:          svds,
-		partitionvds:  pvds,
-		logger:        createOptions.Logger,
+		//createOptions: createOptions,
+		//systemArea:    sa,
+		//bootRecord:    &br,
+		//pvd:           &pvd,
+		//svds:          svds,
+		//partitionvds:  pvds,
+		//logger:        createOptions.Logger,
 	}
 
 	return iso, nil
 }
 
 // ISO9660 represents an ISO9660 filesystem.
-// TODO: Volume Descriptors should be replaced with a Volume Descriptor Set
 type ISO9660 struct {
 	// ISO Reader
 	isoReader io.ReaderAt
@@ -303,161 +278,138 @@ type ISO9660 struct {
 	volumeDescriptorSet *descriptor.VolumeDescriptorSet
 	// Path Tables
 	pathTables []*pathtable.PathTable
-	// Directory Records
-
-	// TODO: ---- REVISIT BELOW THIS POINT
-
-	// Pointer to the preferred Volume Descriptor
-	activeVD descriptor.VolumeDescriptor
-	// PVD Directory Records
-	pvdDirectoryRecords []*directory.DirectoryRecord
-	// SVD Directory Records
-	svdDirectoryRecords []*directory.DirectoryRecord
-	// Pointer to the preferred Directory Records
-	activeDirectoryRecords *[]*directory.DirectoryRecord
-	// pvdLPathTable is a pointer to the pvd's little-endian path table.
-	pvdLPathTable *pathtable.PathTable
-	// pvdMPathTable is a pointer to the pvd's big-endian path table.
-	pvdMPathTable *pathtable.PathTable
-	// svdLPathTable is a pointer to the svd's little-endian path table.
-	svdLPathTable *pathtable.PathTable
-	// svdMPathTable is a pointer to the svd's big-endian path table.
-	svdMPathTable *pathtable.PathTable
-	// FileSystemEntries
-	filesystemEntries []*filesystem.FileSystemEntry
 	// ElTorito Boot Record
 	elTorito *boot.ElTorito
-	// ISO Layout Information
-	layout *info.ISOLayout
+	// FileSystemEntries
+	filesystemEntries []*filesystem.FileSystemEntry
 	// Logger
 	logger *logging.Logger
+	// isPacked represents if the ISO9660 filesystem is packed and ready to write to disk
+	isPacked bool
 }
 
 // GetVolumeID returns the volume identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetVolumeID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].VolumeIdentifier()
 	}
-	return iso.activeVD.VolumeIdentifier()
+	return iso.volumeDescriptorSet.Primary.VolumeIdentifier()
 }
 
 // GetSystemID returns the system identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetSystemID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].SystemIdentifier()
 	}
-	return iso.activeVD.SystemIdentifier()
+	return iso.volumeDescriptorSet.Primary.SystemIdentifier()
 }
 
 // GetVolumeSize returns the size of the ISO9660 filesystem.
 func (iso *ISO9660) GetVolumeSize() uint32 {
-	return iso.pvd.VolumeSpaceSize
+	return iso.volumeDescriptorSet.Primary.VolumeSpaceSize
 }
 
 // GetVolumeSetID returns the volume set identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetVolumeSetID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].VolumeSetIdentifier()
 	}
-	return iso.activeVD.VolumeSetIdentifier()
+	return iso.volumeDescriptorSet.Primary.VolumeSetIdentifier()
 }
 
 // GetPublisherID returns the publisher identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetPublisherID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].PublisherIdentifier()
 	}
-	return iso.activeVD.PublisherIdentifier()
+	return iso.volumeDescriptorSet.Primary.PublisherIdentifier()
 }
 
 // GetDataPreparerID returns the data preparer identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetDataPreparerID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].DataPreparerIdentifier()
 	}
-	return iso.activeVD.DataPreparerIdentifier()
+	return iso.volumeDescriptorSet.Primary.DataPreparerIdentifier()
 }
 
 // GetApplicationID returns the application identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetApplicationID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].ApplicationIdentifier()
 	}
-	return iso.activeVD.ApplicationIdentifier()
+	return iso.volumeDescriptorSet.Primary.ApplicationIdentifier()
 }
 
 // GetCopyrightID returns the copyright identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetCopyrightID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].CopyrightFileIdentifier()
 	}
-	return iso.activeVD.CopyrightFileIdentifier()
+	return iso.volumeDescriptorSet.Primary.CopyrightFileIdentifier()
 }
 
 // GetAbstractID returns the abstract identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetAbstractID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].AbstractFileIdentifier()
 	}
-	return iso.activeVD.AbstractFileIdentifier()
+	return iso.volumeDescriptorSet.Primary.AbstractFileIdentifier()
 }
 
 // GetBibliographicID returns the bibliographic identifier of the ISO9660 filesystem.
 func (iso *ISO9660) GetBibliographicID() string {
-	if iso.activeVD == nil {
-		return ""
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].BibliographicFileIdentifier()
 	}
-	return iso.activeVD.BibliographicFileIdentifier()
+	return iso.volumeDescriptorSet.Primary.BibliographicFileIdentifier()
 }
 
 // GetCreationDateTime returns the creation date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetCreationDateTime() time.Time {
-	if iso.activeVD == nil {
-		return time.Time{}
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].VolumeCreationDateTime()
 	}
-	return iso.activeVD.VolumeCreationDateTime()
+	return iso.volumeDescriptorSet.Primary.VolumeCreationDateTime()
 }
 
 // GetModificationDateTime returns the modification date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetModificationDateTime() time.Time {
-	if iso.activeVD == nil {
-		return time.Time{}
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].VolumeModificationDateTime()
 	}
-	return iso.activeVD.VolumeModificationDateTime()
+	return iso.volumeDescriptorSet.Primary.VolumeModificationDateTime()
 }
 
 // GetExpirationDateTime returns the expiration date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetExpirationDateTime() time.Time {
-	if iso.activeVD == nil {
-		return time.Time{}
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].VolumeExpirationDateTime()
 	}
-	return iso.activeVD.VolumeExpirationDateTime()
+	return iso.volumeDescriptorSet.Primary.VolumeExpirationDateTime()
 }
 
 // GetEffectiveDateTime returns the effective date and time of the ISO9660 filesystem.
 func (iso *ISO9660) GetEffectiveDateTime() time.Time {
-	if iso.activeVD == nil {
-		return time.Time{}
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].VolumeEffectiveDateTime()
 	}
-	return iso.activeVD.VolumeEffectiveDateTime()
+	return iso.volumeDescriptorSet.Primary.VolumeEffectiveDateTime()
 }
 
 // HasJoliet returns true if the ISO9660 filesystem has Joliet extensions.
 func (iso *ISO9660) HasJoliet() bool {
-	if iso.activeVD == nil {
-		return false
-	}
-	return iso.activeVD.HasJoliet()
-}
-
-// HasRockRidge returns true if the ISO9660 filesystem has Rock Ridge extensions.
-func (iso *ISO9660) HasRockRidge() bool {
-	for _, rec := range *iso.activeDirectoryRecords {
-		if rec.RockRidge != nil {
+	for _, svd := range iso.volumeDescriptorSet.Supplementary {
+		if svd.HasJoliet() {
 			return true
 		}
 	}
 	return false
+}
+
+// HasRockRidge returns true if the ISO9660 filesystem has Rock Ridge extensions.
+func (iso *ISO9660) HasRockRidge() bool {
+	return iso.volumeDescriptorSet.Primary.HasRockRidge()
 }
 
 // HasElTorito returns true if the ISO9660 filesystem has El Torito boot extensions.
@@ -467,7 +419,10 @@ func (iso *ISO9660) HasElTorito() bool {
 
 // RootDirectoryLocation returns the location of the root directory in the ISO9660 filesystem.
 func (iso *ISO9660) RootDirectoryLocation() uint32 {
-	return iso.activeVD.RootDirectory().LocationOfExtent
+	if iso.openOptions.PreferJoliet && iso.volumeDescriptorSet.Supplementary != nil {
+		return iso.volumeDescriptorSet.Supplementary[0].RootDirectoryRecord.LocationOfExtent
+	}
+	return iso.volumeDescriptorSet.Primary.RootDirectoryRecord.LocationOfExtent
 }
 
 // ListBootEntries returns a list of all boot entries in the ISO9660 filesystem.
@@ -637,72 +592,145 @@ func (iso *ISO9660) GetLogger() *logging.Logger {
 
 // GetLayout returns the layout information for the ISO9660 filesystem.
 func (iso *ISO9660) GetLayout() *info.ISOLayout {
-	return iso.layout
+	objects := iso.GetObjects()
+
+	return &info.ISOLayout{
+		Objects: objects,
+	}
 }
 
-func (iso *ISO9660) Save(writer io.WriterAt) error {
+func (iso *ISO9660) GetObjects() []info.ImageObject {
+	var objects []info.ImageObject
 
-	sectorSize := int64(consts.ISO9660_SECTOR_SIZE)
-	saOffset := int64(0)
-
-	// Calculate offsets for descriptors
-	pvdSize := sectorSize
-	bootSize := int64(0)
-	if iso.bootRecord != nil {
-		bootSize = sectorSize
-	}
-	svdSize := int64(len(iso.svds)) * sectorSize
-	ptvdSize := int64(len(iso.partitionvds)) * sectorSize
-
-	pvdOffset := saOffset + consts.ISO9660_SYSTEM_AREA_SECTORS*sectorSize
-	bootOffset := pvdOffset + pvdSize
-	svdOffset := bootOffset + bootSize
-	ptvdOffset := svdOffset + svdSize
-	termOffset := ptvdOffset + ptvdSize
-
-	type descriptorSetEntry struct {
-		descriptor descriptor.VolumeDescriptor
-		offset     int64
-	}
-	descriptorSet := []*descriptorSetEntry{
-		{descriptor: iso.pvd, offset: pvdOffset},
-	}
-	if iso.bootRecord != nil {
-		descriptorSet = append(descriptorSet,
-			&descriptorSetEntry{descriptor: iso.bootRecord, offset: bootOffset},
-		)
-	}
-	for i, svd := range iso.svds {
-		descriptorSet = append(descriptorSet,
-			&descriptorSetEntry{descriptor: svd, offset: svdOffset + int64(i)*sectorSize},
-		)
-	}
-	for i, ptvd := range iso.partitionvds {
-		descriptorSet = append(descriptorSet,
-			&descriptorSetEntry{descriptor: ptvd, offset: ptvdOffset + int64(i)*sectorSize},
-		)
-	}
-	descriptorSet = append(descriptorSet,
-		&descriptorSetEntry{descriptor: descriptor.NewVolumeDescriptorSetTerminator(), offset: termOffset})
-
-	// Write system area
-	_, err := writer.WriteAt(iso.systemArea.Contents[:], 0)
-	if err != nil {
-		return err
+	for _, objs := range []([]info.ImageObject){
+		iso.systemArea.GetObjects(),
+		iso.volumeDescriptorSet.Primary.GetObjects(),
+		iso.volumeDescriptorSet.Terminator.GetObjects(),
+	} {
+		objects = append(objects, objs...)
 	}
 
-	// Write descriptor set
-	for _, entry := range descriptorSet {
-		if err = writeDescriptor(writer, entry.descriptor, entry.offset); err != nil {
-			return err
+	if iso.volumeDescriptorSet.Boot != nil {
+		objects = append(objects, iso.volumeDescriptorSet.Boot.GetObjects()...)
+	}
+
+	if iso.volumeDescriptorSet.Supplementary != nil {
+		for _, svd := range iso.volumeDescriptorSet.Supplementary {
+			objects = append(objects, svd.GetObjects()...)
 		}
 	}
 
-	// Write path tables according to their location in the volume descriptors
-	err = iso.writePathTables(writer)
-	if err != nil {
-		return err
+	if iso.volumeDescriptorSet.Partition != nil {
+		for _, pvd := range iso.volumeDescriptorSet.Partition {
+			objects = append(objects, pvd.GetObjects()...)
+		}
 	}
+
+	if iso.pathTables != nil {
+		for _, pt := range iso.pathTables {
+			objects = append(objects, pt.GetObjects()...)
+		}
+	}
+
+	if iso.elTorito != nil {
+		objects = append(objects, iso.elTorito.GetObjects()...)
+	}
+	return objects
+}
+
+func (iso *ISO9660) Save(writer io.WriterAt) error {
+	// Ensure the ISO is packed and all objects have been assigned locations
+	if !iso.isPacked {
+		// TODO: Make packing automatic
+		return errors.New("iso is not packed, cannot save")
+	}
+
+	// Get all objects
+	objects := iso.GetObjects()
+
+	// Sort objects by offset before writing
+	slices.SortFunc(objects, func(a, b info.ImageObject) int {
+		return int(a.Offset() - b.Offset())
+	})
+
+	// Write each object at its assigned offset
+	for _, obj := range objects {
+		// Get raw data for the object
+		data, err := obj.Marshal()
+		if err != nil {
+			return fmt.Errorf("failed to marshal object %s: %w", obj.Name(), err)
+		}
+
+		// Write data at the correct offset
+		_, err = writer.WriteAt(data, obj.Offset())
+		if err != nil {
+			return fmt.Errorf("failed to write object %s at offset %d: %w", obj.Name(), obj.Offset(), err)
+		}
+	}
+
+	return nil
+
+	//sectorSize := int64(consts.ISO9660_SECTOR_SIZE)
+	//saOffset := int64(0)
+	//
+	//// Calculate offsets for descriptors
+	//pvdSize := sectorSize
+	//bootSize := int64(0)
+	//if iso.bootRecord != nil {
+	//	bootSize = sectorSize
+	//}
+	//svdSize := int64(len(iso.svds)) * sectorSize
+	//ptvdSize := int64(len(iso.partitionvds)) * sectorSize
+	//
+	//pvdOffset := saOffset + consts.ISO9660_SYSTEM_AREA_SECTORS*sectorSize
+	//bootOffset := pvdOffset + pvdSize
+	//svdOffset := bootOffset + bootSize
+	//ptvdOffset := svdOffset + svdSize
+	//termOffset := ptvdOffset + ptvdSize
+	//
+	//type descriptorSetEntry struct {
+	//	descriptor descriptor.VolumeDescriptor
+	//	offset     int64
+	//}
+	//descriptorSet := []*descriptorSetEntry{
+	//	{descriptor: iso.pvd, offset: pvdOffset},
+	//}
+	//if iso.bootRecord != nil {
+	//	descriptorSet = append(descriptorSet,
+	//		&descriptorSetEntry{descriptor: iso.bootRecord, offset: bootOffset},
+	//	)
+	//}
+	//for i, svd := range iso.svds {
+	//	descriptorSet = append(descriptorSet,
+	//		&descriptorSetEntry{descriptor: svd, offset: svdOffset + int64(i)*sectorSize},
+	//	)
+	//}
+	//for i, ptvd := range iso.partitionvds {
+	//	descriptorSet = append(descriptorSet,
+	//		&descriptorSetEntry{descriptor: ptvd, offset: ptvdOffset + int64(i)*sectorSize},
+	//	)
+	//}
+	//descriptorSet = append(descriptorSet,
+	//	&descriptorSetEntry{descriptor: descriptor.NewVolumeDescriptorSetTerminator(), offset: termOffset})
+	//
+	//// Write system area
+	//_, err := writer.WriteAt(iso.systemArea.Contents[:], 0)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// Write descriptor set
+	//for _, entry := range descriptorSet {
+	//	if err = writeDescriptor(writer, entry.descriptor, entry.offset); err != nil {
+	//		return err
+	//	}
+	//}
+	//
+	//// Write path tables according to their location in the volume descriptors
+	//err = iso.writePathTables(writer)
+	//if err != nil {
+	//	return err
+	//}
 
 	// Write directory records
 
@@ -786,49 +814,49 @@ func (iso *ISO9660) Close() error {
 
 // writePathTables writes the path tables to the ISO9660 filesystem.
 func (iso *ISO9660) writePathTables(writer io.WriterAt) error {
-	if iso.pvd == nil {
-		return errors.New("PVD is missing")
-	}
-
-	buf, err := iso.pvdLPathTable.Marshal(true)
-	if err != nil {
-		return err
-	}
-
-	if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
-		return err
-	}
-
-	buf, err = iso.pvdMPathTable.Marshal(false)
-	if err != nil {
-		return err
-	}
-
-	if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
-		return err
-	}
-
-	if iso.svdLPathTable != nil {
-		buf, err = iso.svdLPathTable.Marshal(true)
-		if err != nil {
-			return err
-		}
-
-		if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
-			return err
-		}
-	}
-
-	if iso.svdMPathTable != nil {
-		buf, err = iso.svdMPathTable.Marshal(false)
-		if err != nil {
-			return err
-		}
-
-		if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
-			return err
-		}
-	}
+	//if iso.pvd == nil {
+	//	return errors.New("PVD is missing")
+	//}
+	//
+	//buf, err := iso.pvdLPathTable.Marshal(true)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+	//	return err
+	//}
+	//
+	//buf, err = iso.pvdMPathTable.Marshal(false)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//if _, err = writer.WriteAt(buf, int64(iso.pvd.LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+	//	return err
+	//}
+	//
+	//if iso.svdLPathTable != nil {
+	//	buf, err = iso.svdLPathTable.Marshal(true)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeLPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+	//		return err
+	//	}
+	//}
+	//
+	//if iso.svdMPathTable != nil {
+	//	buf, err = iso.svdMPathTable.Marshal(false)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	if _, err = writer.WriteAt(buf, int64(iso.svds[0].LocationOfTypeMPathTable)*consts.ISO9660_SECTOR_SIZE); err != nil {
+	//		return err
+	//	}
+	//}
 
 	return nil
 }

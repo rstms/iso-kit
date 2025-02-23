@@ -10,19 +10,20 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/extensions"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/extent"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/pathtable"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"github.com/bgrewell/iso-kit/pkg/option"
 	"io"
 )
 
 // NewParser creates a new Parser object with the provided reader and options.
-func NewParser(reader io.ReaderAt, layout *info.ISOLayout, options *option.OpenOptions) *Parser {
+func NewParser(reader io.ReaderAt, options *option.OpenOptions) *Parser {
 	return &Parser{
 		reader:  reader,
 		options: options,
 		logger:  options.Logger,
-		layout:  layout,
 	}
 }
 
@@ -77,16 +78,14 @@ func (p *Parser) GetBootRecord() (*descriptor.BootRecordDescriptor, error) {
 			bootRecord := &descriptor.BootRecordDescriptor{
 				VolumeDescriptorHeader: header,
 				BootRecordBody: descriptor.BootRecordBody{
-					Logger: p.logger,
+					Logger:         p.logger,
+					ObjectLocation: offset,
+					ObjectSize:     uint32(n),
 				},
 			}
 			if err = bootRecord.Unmarshal(buf); err != nil {
 				return nil, err
 			}
-
-			// Update layout
-			p.layout.AddVolumeDescriptor(bootRecord.VolumeDescriptorType.String(),
-				int(bootRecord.VolumeDescriptorVersion), int(offset), n)
 
 			return bootRecord, nil
 		}
@@ -106,25 +105,26 @@ func (p *Parser) GetElTorito(bootRecord *descriptor.BootRecordDescriptor) (*boot
 		return nil, err
 	}
 	et := &boot.ElTorito{
-		Logger: p.logger,
+		ObjectLocation: catalogOffset,
+		ObjectSize:     consts.ISO9660_SECTOR_SIZE,
+		Logger:         p.logger,
 	}
 	if err := et.UnmarshalBinary(catalogBytes[:]); err != nil {
 		return nil, err
 	}
-	p.layout.BootCatalogSystem = "El Torito"
-	p.layout.BootCatalogOffset = int(catalogOffset)
-	p.layout.BootCatalogLength = consts.ISO9660_SECTOR_SIZE
+
 	return et, nil
 }
 
 // GetPrimaryVolumeDescriptor reads and validates the ISO9660 PVD.
 func (p *Parser) GetPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescriptor, error) {
 	var buf [2048]byte
-	n, err := p.reader.ReadAt(buf[:], consts.ISO9660_SYSTEM_AREA_SECTORS*consts.ISO9660_SECTOR_SIZE)
+	offset := int64(consts.ISO9660_SYSTEM_AREA_SECTORS * consts.ISO9660_SECTOR_SIZE)
+	n, err := p.reader.ReadAt(buf[:], offset)
 	if err != nil {
 		return nil, err
 	}
-	p.logger.Info("Reading primary volume descriptor", "offset", consts.ISO9660_SYSTEM_AREA_SECTORS*consts.ISO9660_SECTOR_SIZE)
+	p.logger.Info("Reading primary volume descriptor", "offset", offset)
 
 	// Unmarshal the VolumeDescriptorHeader
 	header := descriptor.VolumeDescriptorHeader{}
@@ -141,7 +141,9 @@ func (p *Parser) GetPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescript
 	pvd := &descriptor.PrimaryVolumeDescriptor{
 		VolumeDescriptorHeader: header,
 		PrimaryVolumeDescriptorBody: descriptor.PrimaryVolumeDescriptorBody{
-			Logger: p.logger,
+			ObjectLocation: offset,
+			ObjectSize:     uint32(n),
+			Logger:         p.logger,
 		},
 	}
 
@@ -149,15 +151,6 @@ func (p *Parser) GetPrimaryVolumeDescriptor() (*descriptor.PrimaryVolumeDescript
 	if err = pvd.Unmarshal([2048]byte(buf[:])); err != nil {
 		return nil, err
 	}
-
-	// Update layout
-	offset := consts.ISO9660_SYSTEM_AREA_SECTORS * consts.ISO9660_SECTOR_SIZE
-	p.layout.AddVolumeDescriptor(pvd.VolumeDescriptorType.String(),
-		int(pvd.VolumeDescriptorVersion), offset, n)
-	p.layout.AddPathTable(pvd.VolumeDescriptorType.String(), int(pvd.LocationOfTypeLPathTable*consts.ISO9660_SECTOR_SIZE),
-		int(pvd.PathTableSize), "little-endian")
-	p.layout.AddPathTable(pvd.VolumeDescriptorType.String(), int(pvd.LocationOfTypeMPathTable*consts.ISO9660_SECTOR_SIZE),
-		int(pvd.PathTableSize), "big-endian")
 
 	return pvd, nil
 }
@@ -203,22 +196,15 @@ func (p *Parser) GetSupplementaryVolumeDescriptors() ([]*descriptor.Supplementar
 			svd := &descriptor.SupplementaryVolumeDescriptor{
 				VolumeDescriptorHeader: header,
 				SupplementaryVolumeDescriptorBody: descriptor.SupplementaryVolumeDescriptorBody{
-					Logger: p.logger,
+					ObjectLocation: offset,
+					ObjectSize:     uint32(n),
+					Logger:         p.logger,
 				},
 			}
 
 			if err = svd.Unmarshal(buf); err != nil {
 				return nil, err
 			}
-
-			// Update layout
-			p.layout.AddVolumeDescriptor(svd.VolumeDescriptorType.String(),
-				int(svd.VolumeDescriptorVersion), int(offset), n)
-
-			p.layout.AddPathTable(fmt.Sprintf("%s-%d", svd.VolumeDescriptorType.String(), len(svds)), int(svd.LocationOfTypeLPathTable*consts.ISO9660_SECTOR_SIZE),
-				int(svd.PathTableSize), "little-endian")
-			p.layout.AddPathTable(fmt.Sprintf("%s-%d", svd.VolumeDescriptorType.String(), len(svds)), int(svd.LocationOfTypeMPathTable*consts.ISO9660_SECTOR_SIZE),
-				int(svd.PathTableSize), "big-endian")
 
 			svds = append(svds, svd)
 		}
@@ -266,17 +252,15 @@ func (p *Parser) GetVolumePartitionDescriptors() ([]*descriptor.VolumePartitionD
 			vpd := &descriptor.VolumePartitionDescriptor{
 				VolumeDescriptorHeader: header,
 				VolumePartitionDescriptorBody: descriptor.VolumePartitionDescriptorBody{
-					Logger: p.logger,
+					ObjectLocation: offset,
+					ObjectSize:     uint32(n),
+					Logger:         p.logger,
 				},
 			}
 
 			if err = vpd.Unmarshal(buf); err != nil {
 				return nil, err
 			}
-
-			// Update layout
-			p.layout.AddVolumeDescriptor(vpd.VolumeDescriptorType.String(),
-				int(vpd.VolumeDescriptorVersion), int(offset), n)
 
 			vpds = append(vpds, vpd)
 		}
@@ -324,13 +308,11 @@ func (p *Parser) GetVolumeDescriptorSetTerminator() (*descriptor.VolumeDescripto
 			vdst := &descriptor.VolumeDescriptorSetTerminator{
 				VolumeDescriptorHeader: header,
 				VolumeDescriptorSetTerminatorBody: descriptor.VolumeDescriptorSetTerminatorBody{
-					Logger: p.logger,
+					ObjectLocation: offset,
+					ObjectSize:     uint32(n),
+					Logger:         p.logger,
 				},
 			}
-
-			// Update layout
-			p.layout.AddVolumeDescriptor(vdst.VolumeDescriptorType.String(),
-				int(vdst.VolumeDescriptorVersion), int(offset), n)
 
 			return vdst, nil
 		}
@@ -338,6 +320,19 @@ func (p *Parser) GetVolumeDescriptorSetTerminator() (*descriptor.VolumeDescripto
 		// Otherwise, move to the next sector.
 		sector++
 	}
+}
+
+// GetPathTables reads and validates the ISO9660 Path Tables.
+func (p *Parser) GetPathTables(vd descriptor.VolumeDescriptor) ([]*pathtable.PathTable, error) {
+	ptL, err := pathtable.NewPathTable(p.reader, vd.LocationOfPathTableL(), int(vd.PathTableSize()), vd.DescriptorType().String(), true)
+	if err != nil {
+		return nil, err
+	}
+	ptM, err := pathtable.NewPathTable(p.reader, vd.LocationOfPathTableM(), int(vd.PathTableSize()), vd.DescriptorType().String(), false)
+	if err != nil {
+		return nil, err
+	}
+	return []*pathtable.PathTable{ptL, ptM}, nil
 }
 
 // BuildFileSystemEntries walks the directory tree and converts entries into FileSystemEntry objects.
@@ -446,9 +441,19 @@ func (p *Parser) WalkDirectoryRecords(rootDir *directory.DirectoryRecord) ([]*di
 
 			// If the record is a directory (excluding `.` and `..` entries), recurse
 			if record.IsDirectory() && !record.IsSpecial() {
-				if err := walk(record); err != nil {
+				if err = walk(record); err != nil {
 					return err
 				}
+			} else {
+
+				fe := &extent.FileExtent{
+					FileIdentifier: record.GetBestName(p.options.RockRidgeEnabled),
+					LocationOfFile: record.LocationOfExtent,
+					SizeOfFile:     record.DataLength,
+					Reader:         p.reader,
+				}
+				record.FileExtent = fe
+
 			}
 		}
 		return nil
@@ -518,6 +523,9 @@ func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32, joliet bool
 			return nil, fmt.Errorf("failed to parse directory record: %w", err)
 		}
 
+		dr.ObjectLocation = int64(index) + offset
+		dr.ObjectSize = dr.DataLength
+
 		// **Parse Rock Ridge extensions if present**
 		var rr *extensions.RockRidgeExtensions
 		if len(dr.SystemUse) > 0 {
@@ -528,16 +536,6 @@ func (p *Parser) ReadDirectoryRecords(lba uint32, dataLength uint32, joliet bool
 		}
 
 		records = append(records, dr)
-
-		// Update layout TODO: Need to have a real way to tell the source VD, this is just a hack
-		source := "Primary"
-		if joliet {
-			source = "Joliet"
-		}
-		p.layout.AddDirectoryRecord(dr.GetBestName(!joliet), source, index+int(offset), int(dr.LocationOfExtent), int(dr.DataLength), dr.IsDirectory())
-		if !dr.IsDirectory() {
-			p.layout.AddDirectoryExtent(dr.GetBestName(!joliet), int(dr.LocationOfExtent)*consts.ISO9660_SECTOR_SIZE, int(dr.DataLength))
-		}
 
 		// Move to the next record
 		index += int(length)

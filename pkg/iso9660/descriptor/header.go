@@ -17,11 +17,11 @@ type VolumeDescriptorHeader struct {
 	VolumeDescriptorType VolumeDescriptorType `json:"volume_descriptor_type"`
 	// Standard Identifier should always be 'CD001' as a string or 0x4344303031.
 	StandardIdentifier string `json:"standard_identifier"`
-	// Volume Descriptor Version. The contents and interpretation depend on the Volume Descriptor Type field.
+	// Volume Descriptor Version. The contents and interpretation depend on the Volume Descriptor DescriptorType field.
 	VolumeDescriptorVersion uint8 `json:"volume_descriptor_version"`
 }
 
-func (h *VolumeDescriptorHeader) Type() VolumeDescriptorType {
+func (h *VolumeDescriptorHeader) DescriptorType() VolumeDescriptorType {
 	return h.VolumeDescriptorType
 }
 
@@ -37,7 +37,7 @@ func (h *VolumeDescriptorHeader) Version() uint8 {
 func (vdh *VolumeDescriptorHeader) Marshal() ([consts.ISO9660_VOLUME_DESC_HEADER_SIZE]byte, error) {
 	var buf [consts.ISO9660_VOLUME_DESC_HEADER_SIZE]byte
 
-	// Byte 0: Volume Descriptor Type.
+	// Byte 0: Volume Descriptor DescriptorType.
 	buf[0] = byte(vdh.VolumeDescriptorType)
 
 	// Bytes 1-5: Standard Identifier.

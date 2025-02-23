@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"io"
 	"os"
@@ -48,11 +49,66 @@ const (
 	MacOSXBoot    PartitionType = 0xab
 	HFS           PartitionType = 0xaf
 	Solaris8Boot  PartitionType = 0xbe
-	GPTProtective PartitionType = 0xef
-	EFISystem     PartitionType = 0xef
-	VMWareFS      PartitionType = 0xfb
-	VMWareSwap    PartitionType = 0xfc
+	//GPTProtective PartitionType = 0xef
+	EFISystem  PartitionType = 0xef
+	VMWareFS   PartitionType = 0xfb
+	VMWareSwap PartitionType = 0xfc
 )
+
+func (p PartitionType) String() string {
+	switch p {
+	case Empty:
+		return "Empty"
+	case Fat12:
+		return "FAT12"
+	case XenixRoot:
+		return "Xenix Root"
+	case XenixUsr:
+		return "Xenix User"
+	case Fat16:
+		return "FAT16"
+	case ExtendedCHS:
+		return "Extended (CHS)"
+	case Fat16b:
+		return "FAT16B"
+	case NTFS:
+		return "NTFS"
+	case CommodoreFAT:
+		return "Commodore FAT"
+	case Fat32CHS:
+		return "FAT32 (CHS)"
+	case Fat32LBA:
+		return "FAT32 (LBA)"
+	case Fat16bLBA:
+		return "FAT16B (LBA)"
+	case ExtendedLBA:
+		return "Extended (LBA)"
+	case Linux:
+		return "Linux"
+	case LinuxExtended:
+		return "Linux Extended"
+	case LinuxLVM:
+		return "Linux LVM"
+	case Iso9660:
+		return "ISO9660"
+	case MacOSXUFS:
+		return "MacOS X UFS"
+	case MacOSXBoot:
+		return "MacOS X Boot"
+	case HFS:
+		return "HFS"
+	case Solaris8Boot:
+		return "Solaris 8 Boot"
+	case EFISystem:
+		return "EFI System"
+	case VMWareFS:
+		return "VMWare FS"
+	case VMWareSwap:
+		return "VMWare Swap"
+	default:
+		return "Unknown"
+	}
+}
 
 // Platform represents the target booting system for an El-Torito bootable ISO.
 type Platform uint8
@@ -63,6 +119,21 @@ const (
 	Mac  Platform = 0x2  // Macintosh systems
 	EFI  Platform = 0xef // Extensible Firmware Interface (EFI)
 )
+
+func (p Platform) String() string {
+	switch p {
+	case BIOS:
+		return "BIOS"
+	case PPC:
+		return "PowerPC"
+	case Mac:
+		return "Macintosh"
+	case EFI:
+		return "EFI"
+	default:
+		return "Unknown"
+	}
+}
 
 // Emulation represents the emulation mode used for booting.
 type Emulation uint8
@@ -98,7 +169,107 @@ type ElTorito struct {
 	HideBootCatalog bool             // Whether to hide the boot catalog in the filesystem
 	Entries         []*ElToritoEntry // List of El-Torito boot entries
 	Platform        Platform         // Target platform for booting
-	Logger          *logging.Logger  // Logger for debug output
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32          `json:"object_size"`
+	Logger     *logging.Logger // Logger for debug output
+}
+
+func (et *ElTorito) Type() string {
+	return "Boot Catalog"
+}
+
+func (et *ElTorito) Name() string {
+	return "El Torito Boot Catalog"
+}
+
+func (et *ElTorito) Description() string {
+	return fmt.Sprintf("%s Entries: %d", et.BootCatalog, len(et.Entries))
+}
+
+func (et *ElTorito) Properties() map[string]interface{} {
+
+	type EntryDetails struct {
+		Emulation     string
+		Platform      string
+		PartitionType string
+		Location      uint32
+		Size          uint16
+	}
+
+	entryDetails := make(map[string]EntryDetails)
+	if len(et.Entries) > 0 {
+		for _, entry := range et.Entries {
+			entryDetails[entry.BootFile] = EntryDetails{
+				Emulation:     entry.Emulation.String(),
+				Platform:      entry.Platform.String(),
+				PartitionType: entry.PartitionType.String(),
+				Location:      entry.location,
+				Size:          entry.size,
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"Entries":         len(et.Entries),
+		"Platform":        et.Platform,
+		"HideBootCatalog": et.HideBootCatalog,
+		"EntryDetails":    entryDetails,
+	}
+}
+
+func (et *ElTorito) Offset() int64 {
+	return et.ObjectLocation
+}
+
+func (et *ElTorito) Size() int {
+	return int(et.ObjectSize)
+}
+
+func (et *ElTorito) GetObjects() []info.ImageObject {
+	return []info.ImageObject{et}
+}
+
+func (et *ElTorito) Marshal() ([]byte, error) {
+	if len(et.Entries) == 0 {
+		return nil, fmt.Errorf("El Torito Boot Catalog has no entries")
+	}
+
+	// Boot Catalog is stored in 2048-byte sectors, ensure correct alignment
+	data := make([]byte, consts.ISO9660_SECTOR_SIZE)
+
+	// 1️⃣ Write Validation Entry (First 32 bytes)
+	data[0] = 0x01                    // Header ID
+	copy(data[1:6], "EL TORITO SPEC") // Identifier
+	data[0x1E] = 0x55
+	data[0x1F] = 0xAA
+
+	// Compute checksum
+	checksum := uint16(0)
+	for i := 0; i < 32; i += 2 {
+		checksum += binary.LittleEndian.Uint16(data[i : i+2])
+	}
+	binary.LittleEndian.PutUint16(data[0x1C:0x1E], -checksum) // Store negative checksum
+
+	// 2️⃣ Write Initial Boot Entry (First Boot Entry, starts at offset 32)
+	offset := 32
+	for _, entry := range et.Entries {
+		if offset+32 > len(data) {
+			return nil, fmt.Errorf("Boot catalog exceeds sector size limit")
+		}
+
+		data[offset] = 0x88                    // Boot Indicator (0x88 = Bootable)
+		data[offset+1] = byte(entry.Platform)  // Platform ID
+		data[offset+2] = byte(entry.Emulation) // Emulation Type
+		binary.LittleEndian.PutUint16(data[offset+4:], entry.LoadSegment)
+		binary.LittleEndian.PutUint16(data[offset+6:], entry.size)     // Size in 512-byte blocks
+		binary.LittleEndian.PutUint32(data[offset+8:], entry.location) // Location in 2048-byte sectors
+
+		offset += 32 // Move to next entry
+	}
+
+	return data, nil
 }
 
 // UnmarshalBinary decodes an El-Torito Boot Catalog from binary form

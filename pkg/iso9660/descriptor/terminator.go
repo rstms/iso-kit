@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/bgrewell/iso-kit/pkg/consts"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/logging"
 	"time"
 )
@@ -33,15 +34,19 @@ type VolumeDescriptorSetTerminator struct {
 	VolumeDescriptorSetTerminatorBody
 }
 
+func (d *VolumeDescriptorSetTerminator) GetObjects() []info.ImageObject {
+	return []info.ImageObject{d}
+}
+
 // Marshal marshals the VolumeDescriptorSetTerminator into a byte array.
-func (d *VolumeDescriptorSetTerminator) Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error) {
+func (d *VolumeDescriptorSetTerminator) Marshal() ([]byte, error) {
 	var buf [consts.ISO9660_SECTOR_SIZE]byte
 	offset := 0
 
 	// 1. Marshal the VolumeDescriptorHeader (first 7 bytes).
 	headerBytes, err := d.VolumeDescriptorHeader.Marshal()
 	if err != nil {
-		return buf, fmt.Errorf("failed to marshal VolumeDescriptorHeader: %w", err)
+		return buf[:], fmt.Errorf("failed to marshal VolumeDescriptorHeader: %w", err)
 	}
 	copy(buf[0:7], headerBytes[:])
 	offset += 7
@@ -51,10 +56,10 @@ func (d *VolumeDescriptorSetTerminator) Marshal() ([consts.ISO9660_SECTOR_SIZE]b
 	offset += TERMINATOR_RESERVED_SIZE
 
 	if offset != consts.ISO9660_SECTOR_SIZE {
-		return buf, fmt.Errorf("marshal VolumeDescriptorSetTerminator: incorrect offset %d", offset)
+		return buf[:], fmt.Errorf("marshal VolumeDescriptorSetTerminator: incorrect offset %d", offset)
 	}
 
-	return buf, nil
+	return buf[:], nil
 }
 
 // Unmarshal parses a 2048-byte sector into the VolumeDescriptorSetTerminator.
@@ -83,8 +88,37 @@ func (d *VolumeDescriptorSetTerminator) Unmarshal(data [consts.ISO9660_SECTOR_SI
 type VolumeDescriptorSetTerminatorBody struct {
 	// Reserved for future standardization
 	Reserved [TERMINATOR_RESERVED_SIZE]byte `json:"reserved"`
+	// --- Fields that are not part of the ISO9660 object ---
+	// Object Location (in bytes)
+	ObjectLocation int64 `json:"object_location"`
+	// Object Size (in bytes)
+	ObjectSize uint32 `json:"object_size"`
 	// Logger
 	Logger *logging.Logger
+}
+
+func (d *VolumeDescriptorSetTerminatorBody) Type() string {
+	return "Volume Descriptor"
+}
+
+func (d *VolumeDescriptorSetTerminatorBody) Name() string {
+	return "Volume Descriptor Set Terminator"
+}
+
+func (d *VolumeDescriptorSetTerminatorBody) Description() string {
+	return ""
+}
+
+func (d *VolumeDescriptorSetTerminatorBody) Properties() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+func (d *VolumeDescriptorSetTerminatorBody) Offset() int64 {
+	return d.ObjectLocation
+}
+
+func (d *VolumeDescriptorSetTerminatorBody) Size() int {
+	return int(d.ObjectSize)
 }
 
 // VolumeIdentifier returns the volume identifier.

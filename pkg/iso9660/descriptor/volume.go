@@ -46,7 +46,7 @@ func (vdt VolumeDescriptorType) String() string {
 }
 
 type VolumeDescriptor interface {
-	Type() VolumeDescriptorType
+	DescriptorType() VolumeDescriptorType
 	Identifier() string
 	Version() uint8
 	VolumeIdentifier() string
@@ -62,9 +62,12 @@ type VolumeDescriptor interface {
 	VolumeModificationDateTime() time.Time
 	VolumeExpirationDateTime() time.Time
 	VolumeEffectiveDateTime() time.Time
+	LocationOfPathTableL() uint32
+	LocationOfPathTableM() uint32
+	PathTableSize() uint32
 	HasJoliet() bool
 	HasRockRidge() bool
 	RootDirectory() *directory.DirectoryRecord
-	Marshal() ([consts.ISO9660_SECTOR_SIZE]byte, error)
+	Marshal() ([]byte, error)
 	Unmarshal(data [consts.ISO9660_SECTOR_SIZE]byte) error
 }

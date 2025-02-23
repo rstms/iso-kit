@@ -130,9 +130,7 @@ func DisplayISOInfo(i iso.ISO, verbose bool) {
 	// Print the layout info by converting to pretty json and printing that
 	layout := i.GetLayout()
 	if layout != nil {
-		fmt.Println("=== ISO Layout ===")
-		layout.Print(true, true, true)
-		fmt.Println("=========================")
+		layout.Print(os.Stdout, true, true, true)
 	} else {
 		fmt.Println("Failed to retrieve ISO layout")
 	}
