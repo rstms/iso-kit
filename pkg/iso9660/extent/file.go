@@ -10,6 +10,7 @@ import (
 type FileExtent struct {
 	// --- This struct is just a concept and not defined in the ISO9660 standard ---
 	FileIdentifier string `json:"file_identifier"`
+	Joliet         bool   `json:"joliet"`
 	LocationOfFile uint32 `json:"location_of_file"`
 	SizeOfFile     uint32 `json:"size_of_file"`
 	Reader         io.ReaderAt
