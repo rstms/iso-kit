@@ -498,6 +498,14 @@ func (iso *ISO9660) Extract(path string) error {
 		return err
 	}
 
+	// Extract El Torito boot images if enabled
+	if iso.elTorito != nil && iso.openOptions.ElToritoEnabled {
+		err := iso.elTorito.ExtractBootImages(iso.isoReader, filepath.Join(path, iso.openOptions.BootFileExtractLocation))
+		if err != nil {
+			return fmt.Errorf("failed to extract El Torito boot images: %w", err)
+		}
+	}
+
 	// Get list of files to extract
 	files, err := iso.ListFiles()
 	if err != nil {
