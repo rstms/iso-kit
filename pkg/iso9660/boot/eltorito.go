@@ -429,7 +429,7 @@ func (et *ElTorito) ExtractBootImages(ra io.ReaderAt, outputDir string) error {
 	}
 
 	// Ensure the output directory exists
-	if err := os.MkdirAll(filepath.Dir(outputDir), 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		if et.Logger != nil {
 			et.Logger.Error(err, "Failed to create parent directories for boot image", "outputPath", outputDir)
 		}
