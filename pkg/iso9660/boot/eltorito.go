@@ -274,12 +274,23 @@ func (et *ElTorito) Marshal() ([]byte, error) {
 
 // UnmarshalBinary decodes an El-Torito Boot Catalog from binary form
 func (et *ElTorito) UnmarshalBinary(data []byte) error {
+	if et.Logger != nil {
+		et.Logger.Debug("Starting El Torito Boot Catalog unmarshalling")
+	}
 	if len(data) < 32 {
-		return fmt.Errorf("Boot Catalog: data too short")
+		err := fmt.Errorf("Boot Catalog: data too short")
+		if et.Logger != nil {
+			et.Logger.Error(err, "Boot Catalog: data too short")
+		}
+		return err
 	}
 
 	// Parse Validation Entry
-	if err := parseValidationEntry(data[:32]); err != nil {
+	err := parseValidationEntry(data[:32])
+	if err != nil {
+		if et.Logger != nil {
+			et.Logger.Error(err, "Boot Catalog: invalid Validation Entry")
+		}
 		return fmt.Errorf("Boot Catalog: invalid Validation Entry: %w", err)
 	}
 
@@ -290,18 +301,27 @@ func (et *ElTorito) UnmarshalBinary(data []byte) error {
 
 		// Check for End of Catalog
 		if entryData[0] == 0x00 {
+			if et.Logger != nil {
+				et.Logger.Debug("End of El Torito Boot Catalog reached", "offset", offset)
+			}
 			break
 		}
 
 		// Handle Section Headers
 		if entryData[0] == 0x90 || entryData[0] == 0x91 {
 			sectionCount = int(binary.LittleEndian.Uint16(entryData[2:4]))
+			if et.Logger != nil {
+				et.Logger.Debug("Section header found", "offset", offset, "entries", sectionCount)
+			}
 			continue
 		}
 
 		// Parse Section Entries
 		if sectionCount > 0 {
 			entry := parseSectionEntry(entryData)
+			if et.Logger != nil {
+				et.Logger.Trace("Parsed section entry", "entry", entry)
+			}
 			et.Entries = append(et.Entries, entry)
 			sectionCount--
 			continue
@@ -309,7 +329,13 @@ func (et *ElTorito) UnmarshalBinary(data []byte) error {
 
 		// Parse Initial/Default Entry
 		entry := parseInitialEntry(entryData)
+		if et.Logger != nil {
+			et.Logger.Trace("Parsed initial entry", "entry", entry)
+		}
 		et.Entries = append(et.Entries, entry)
+	}
+	if et.Logger != nil {
+		et.Logger.Debug("Total El Torito entries discovered", "count", len(et.Entries))
 	}
 	return nil
 }
@@ -351,9 +377,16 @@ type ValidationEntry struct {
 func (et *ElTorito) BuildBootImageEntries() ([]*filesystem.FileSystemEntry, error) {
 	var entries []*filesystem.FileSystemEntry
 
+	if et.Logger != nil {
+		et.Logger.Debug("Building boot image entries for El Torito catalog")
+	}
+
 	for i, entry := range et.Entries {
 		// Skip non-bootable entries
 		if entry.size == 0 || entry.location == 0 {
+			if et.Logger != nil {
+				et.Logger.Trace("Skipping non-bootable entry", "index", i, "entry", entry)
+			}
 			continue
 		}
 
@@ -375,7 +408,15 @@ func (et *ElTorito) BuildBootImageEntries() ([]*filesystem.FileSystemEntry, erro
 			GID:        nil,
 		}
 
+		if et.Logger != nil {
+			et.Logger.Trace("Boot image entry created", "entry", fsEntry)
+		}
+
 		entries = append(entries, fsEntry)
+	}
+
+	if et.Logger != nil {
+		et.Logger.Debug("Total boot image entries built", "count", len(entries))
 	}
 
 	return entries, nil
@@ -383,9 +424,15 @@ func (et *ElTorito) BuildBootImageEntries() ([]*filesystem.FileSystemEntry, erro
 
 // ExtractBootImages extracts all bootable images to the specified directory.
 func (et *ElTorito) ExtractBootImages(ra io.ReaderAt, outputDir string) error {
+	if et.Logger != nil {
+		et.Logger.Debug("Extracting El Torito boot images to directory", "outputDir", outputDir)
+	}
 	for i, entry := range et.Entries {
 		// Skip non-bootable entries
 		if entry.size == 0 || entry.location == 0 {
+			if et.Logger != nil {
+				et.Logger.Trace("Skipping non-bootable entry", "index", i, "entry", entry)
+			}
 			continue
 		}
 
@@ -393,9 +440,16 @@ func (et *ElTorito) ExtractBootImages(ra io.ReaderAt, outputDir string) error {
 		filename := fmt.Sprintf("%d-Boot-%s.img", i+1, entry.Emulation)
 		outputPath := filepath.Join(outputDir, filename)
 
+		if et.Logger != nil {
+			et.Logger.Debug("Extracting boot image", "outputPath", outputPath)
+		}
+
 		// Open the output file for writing
 		outFile, err := os.Create(outputPath)
 		if err != nil {
+			if et.Logger != nil {
+				et.Logger.Error(err, "Failed to create file", "outputPath", outputPath)
+			}
 			return fmt.Errorf("failed to create file %s: %w", outputPath, err)
 		}
 		defer outFile.Close()
@@ -404,16 +458,28 @@ func (et *ElTorito) ExtractBootImages(ra io.ReaderAt, outputDir string) error {
 		startOffset := int64(entry.location) * int64(consts.ISO9660_SECTOR_SIZE)
 		data := make([]byte, int64(entry.size)*512) // Size is in 512-byte blocks
 		if _, err := ra.ReadAt(data, startOffset); err != nil {
+			if et.Logger != nil {
+				et.Logger.Error(err, "Failed to read boot image", "offset", startOffset)
+			}
 			return fmt.Errorf("failed to read boot image at offset %d: %w", startOffset, err)
 		}
 
 		// Write the data to the file
 		if _, err := outFile.Write(data); err != nil {
+			if et.Logger != nil {
+				et.Logger.Error(err, "Failed to write boot image", "outputPath", outputPath)
+			}
 			return fmt.Errorf("failed to write boot image to file %s: %w", outputPath, err)
 		}
 
 		// Save the boot file path in the entry
 		entry.BootFile = outputPath
+		if et.Logger != nil {
+			et.Logger.Debug("Boot image successfully extracted", "outputPath", outputPath)
+		}
+	}
+	if et.Logger != nil {
+		et.Logger.Debug("All boot images extraction complete.")
 	}
 	return nil
 }
