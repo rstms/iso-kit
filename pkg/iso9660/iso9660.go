@@ -7,6 +7,7 @@ import (
 	"github.com/bgrewell/iso-kit/pkg/filesystem"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/boot"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/descriptor"
+	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/parser"
 	"github.com/bgrewell/iso-kit/pkg/iso9660/pathtable"
@@ -150,6 +151,7 @@ func Open(isoReader io.ReaderAt, opts ...option.OpenOption) (*ISO9660, error) {
 		elTorito:            et,
 		logger:              openOptions.Logger,
 		isPacked:            true,
+		pendingFiles:        make(map[string][]byte),
 	}
 
 	return iso, nil
@@ -286,6 +288,8 @@ type ISO9660 struct {
 	logger *logging.Logger
 	// isPacked represents if the ISO9660 filesystem is packed and ready to write to disk
 	isPacked bool
+	// pendingFiles stores data for newly added files that haven't been written to disk yet
+	pendingFiles map[string][]byte
 }
 
 // GetVolumeID returns the volume identifier of the ISO9660 filesystem.
@@ -455,18 +459,106 @@ func (iso *ISO9660) ListDirectories() ([]*filesystem.FileSystemEntry, error) {
 }
 
 func (iso *ISO9660) ReadFile(path string) ([]byte, error) {
-	//TODO implement me
-	panic("implement me")
+	// Normalize the path by removing leading slash
+	normalizedPath := strings.TrimPrefix(path, "/")
+	
+	// Check if it's a pending file first
+	if iso.pendingFiles != nil {
+		if data, exists := iso.pendingFiles[normalizedPath]; exists {
+			return data, nil
+		}
+	}
+	
+	// Find the file in our filesystem entries
+	for _, entry := range iso.filesystemEntries {
+		if entry.FullPath == normalizedPath && !entry.IsDir {
+			return entry.GetBytes()
+		}
+	}
+	
+	return nil, fmt.Errorf("file not found: %s", path)
 }
 
 func (iso *ISO9660) AddFile(path string, data []byte) error {
-	//TODO implement me
-	panic("implement me")
+	// Normalize the path by removing leading slash
+	normalizedPath := strings.TrimPrefix(path, "/")
+	
+	// Check if file already exists
+	for _, entry := range iso.filesystemEntries {
+		if entry.FullPath == normalizedPath {
+			return fmt.Errorf("file already exists: %s", path)
+		}
+	}
+	
+	// Initialize pendingFiles map if it doesn't exist
+	if iso.pendingFiles == nil {
+		iso.pendingFiles = make(map[string][]byte)
+	}
+	
+	// Store the file data
+	iso.pendingFiles[normalizedPath] = data
+	
+	// Create a new file system entry
+	fileName := filepath.Base(normalizedPath)
+	
+	// Create directory record for the new file
+	record := &directory.DirectoryRecord{
+		DataLength:              uint32(len(data)),
+		RecordingDateAndTime:    time.Now(),
+		FileFlags:               directory.FileFlags{}, // Regular file
+		FileIdentifier:          fileName,
+		LocationOfExtent:        0, // Will be set during packing/save
+		ExtendedAttributeRecordLength: 0,
+	}
+	
+	// Create filesystem entry
+	entry := filesystem.NewFileSystemEntry(
+		fileName,
+		normalizedPath,
+		false, // not a directory
+		uint32(len(data)),
+		0, // location will be set during packing
+		nil, // uid
+		nil, // gid
+		0644, // default file mode
+		time.Now(), // create time
+		time.Now(), // mod time
+		record,
+		nil, // reader will be set during save
+	)
+	
+	// Add it to the filesystem entries
+	iso.filesystemEntries = append(iso.filesystemEntries, entry)
+	
+	// Mark as unpacked since we've added a new file
+	iso.isPacked = false
+	
+	return nil
 }
 
 func (iso *ISO9660) RemoveFile(path string) error {
-	//TODO implement me
-	panic("implement me")
+	// Normalize the path by removing leading slash
+	normalizedPath := strings.TrimPrefix(path, "/")
+	
+	// Remove from pending files if it exists there
+	if iso.pendingFiles != nil {
+		if _, exists := iso.pendingFiles[normalizedPath]; exists {
+			delete(iso.pendingFiles, normalizedPath)
+		}
+	}
+	
+	// Find and remove the file from our filesystem entries
+	for i, entry := range iso.filesystemEntries {
+		if entry.FullPath == normalizedPath && !entry.IsDir {
+			// Remove the entry from the slice
+			iso.filesystemEntries = append(iso.filesystemEntries[:i], iso.filesystemEntries[i+1:]...)
+			// Mark as unpacked since we've modified the filesystem
+			iso.isPacked = false
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("file not found: %s", path)
 }
 
 // CreateDirectories creates all directories from the ISO in the specified path.
