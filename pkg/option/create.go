@@ -11,11 +11,13 @@ const (
 )
 
 type CreateOptions struct {
-	ISOType       ISOType
-	Preparer      string
-	RootDir       string
-	JolietEnabled bool
-	Logger        *logging.Logger
+	ISOType          ISOType
+	Preparer         string
+	RootDir          string
+	JolietEnabled    bool
+	RockRidgeEnabled bool
+	ElToritoEnabled  bool
+	Logger           *logging.Logger
 }
 
 type CreateOption func(*CreateOptions)
@@ -41,6 +43,18 @@ func WithRootDir(rootDir string) CreateOption {
 func WithJolietEnabled(jolietEnabled bool) CreateOption {
 	return func(o *CreateOptions) {
 		o.JolietEnabled = jolietEnabled
+	}
+}
+
+func WithCreateRockRidgeEnabled(rockRidgeEnabled bool) CreateOption {
+	return func(o *CreateOptions) {
+		o.RockRidgeEnabled = rockRidgeEnabled
+	}
+}
+
+func WithCreateElToritoEnabled(elToritoEnabled bool) CreateOption {
+	return func(o *CreateOptions) {
+		o.ElToritoEnabled = elToritoEnabled
 	}
 }
 
