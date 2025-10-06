@@ -3,9 +3,9 @@ package xattr
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/bgrewell/iso-kit/pkg/helpers"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
+	"github.com/rstms/iso-kit/pkg/helpers"
+	"github.com/rstms/iso-kit/pkg/iso9660/encoding"
+	"github.com/rstms/iso-kit/pkg/iso9660/info"
 	"time"
 )
 

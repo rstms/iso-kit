@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/bgrewell/iso-kit"
-	"github.com/bgrewell/iso-kit/pkg/option"
-	"github.com/bgrewell/iso-kit/pkg/version"
+	"github.com/rstms/iso-kit"
+	"github.com/rstms/iso-kit/pkg/option"
+	"github.com/rstms/iso-kit/pkg/version"
 	"github.com/bgrewell/usage"
 	"github.com/theckman/yacspin"
 	"golang.org/x/term"

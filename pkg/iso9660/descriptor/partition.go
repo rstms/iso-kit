@@ -2,10 +2,10 @@ package descriptor
 
 import (
 	"fmt"
-	"github.com/bgrewell/iso-kit/pkg/consts"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
-	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/rstms/iso-kit/pkg/consts"
+	"github.com/rstms/iso-kit/pkg/iso9660/directory"
+	"github.com/rstms/iso-kit/pkg/iso9660/info"
+	"github.com/rstms/iso-kit/pkg/logging"
 	"time"
 )
 

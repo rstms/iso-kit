@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
+	"github.com/rstms/iso-kit/pkg/iso9660/encoding"
 	"io/fs"
 	"os"
 	"time"

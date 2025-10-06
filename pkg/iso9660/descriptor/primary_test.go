@@ -3,8 +3,8 @@ package descriptor
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/directory"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
+	"github.com/rstms/iso-kit/pkg/iso9660/directory"
+	"github.com/rstms/iso-kit/pkg/iso9660/encoding"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"

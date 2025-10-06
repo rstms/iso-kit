@@ -9,7 +9,7 @@ At this time, **iso-kit** is in pre-release and no stable versions are available
 We take the security of iso-kit very seriously and appreciate your help in ensuring its integrity. If you believe you have found a security vulnerability, please use GitHub's private vulnerability reporting feature for this repository.
 
 1. **Report Privately on GitHub:**  
-   - Navigate to the [Security tab](https://github.com/bgrewell/iso-kit/security) of the repository.
+   - Navigate to the [Security tab](https://github.com/rstms/iso-kit/security) of the repository.
    - Click on the **"Report a vulnerability"** button to securely submit your report.
    - Provide a detailed report including:
      - A clear description of the vulnerability.

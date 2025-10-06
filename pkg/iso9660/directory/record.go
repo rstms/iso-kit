@@ -2,11 +2,11 @@ package directory
 
 import (
 	"fmt"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/encoding"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/extensions"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/extent"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
-	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/rstms/iso-kit/pkg/iso9660/encoding"
+	"github.com/rstms/iso-kit/pkg/iso9660/extensions"
+	"github.com/rstms/iso-kit/pkg/iso9660/extent"
+	"github.com/rstms/iso-kit/pkg/iso9660/info"
+	"github.com/rstms/iso-kit/pkg/logging"
 	"os"
 	"time"
 )

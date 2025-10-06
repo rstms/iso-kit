@@ -1,10 +1,10 @@
 package udf
 
 import (
-	"github.com/bgrewell/iso-kit/pkg/filesystem"
-	"github.com/bgrewell/iso-kit/pkg/iso9660/info"
-	"github.com/bgrewell/iso-kit/pkg/logging"
-	"github.com/bgrewell/iso-kit/pkg/option"
+	"github.com/rstms/iso-kit/pkg/filesystem"
+	"github.com/rstms/iso-kit/pkg/iso9660/info"
+	"github.com/rstms/iso-kit/pkg/logging"
+	"github.com/rstms/iso-kit/pkg/option"
 	"io"
 	"time"
 )

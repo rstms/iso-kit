@@ -2,8 +2,8 @@ package descriptor
 
 import (
 	"fmt"
-	"github.com/bgrewell/iso-kit/pkg/consts"
-	"github.com/bgrewell/iso-kit/pkg/helpers"
+	"github.com/rstms/iso-kit/pkg/consts"
+	"github.com/rstms/iso-kit/pkg/helpers"
 )
 
 type VolumeDescriptorHeader struct {
