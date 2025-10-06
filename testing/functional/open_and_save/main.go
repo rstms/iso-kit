@@ -3,9 +3,9 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
-	"github.com/bgrewell/iso-kit"
-	"github.com/bgrewell/iso-kit/pkg/logging"
-	"github.com/bgrewell/iso-kit/pkg/option"
+	"github.com/rstms/iso-kit"
+	"github.com/rstms/iso-kit/pkg/logging"
+	"github.com/rstms/iso-kit/pkg/option"
 	"github.com/bgrewell/usage"
 	"io"
 	"os"

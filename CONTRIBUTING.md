@@ -14,7 +14,7 @@ There are several ways you can help:
 
 If you encounter any issues or have found a bug:
 - **Open an Issue:**  
-  Go to [GitHub Issues](https://github.com/bgrewell/iso-kit/issues) and create a new issue.
+  Go to [GitHub Issues](https://github.com/rstms/iso-kit/issues) and create a new issue.
 - **Include Details:**  
   Provide clear steps to reproduce the problem, the expected vs. actual behavior, and any relevant environment details (e.g., OS, Go version).
 
@@ -34,7 +34,7 @@ We welcome pull requests (PRs) for bug fixes, new features, or documentation imp
 
 1. **Fork the Repository:**
 
-   Click the "Fork" button on [github.com/bgrewell/iso-kit](https://github.com/bgrewell/iso-kit) to create your own copy of the repository.
+   Click the "Fork" button on [github.com/rstms/iso-kit](https://github.com/bgrewell/iso-kit) to create your own copy of the repository.
 
 2. **Clone Your Fork:**
 
@@ -81,7 +81,7 @@ We welcome pull requests (PRs) for bug fixes, new features, or documentation imp
 
 8. **Open a Pull Request:**
 
-   Navigate to [github.com/bgrewell/iso-kit/pulls](https://github.com/bgrewell/iso-kit/pulls) and open a new PR from your branch against the `main` branch. Please include a clear description of your changes.
+   Navigate to [github.com/rstms/iso-kit/pulls](https://github.com/bgrewell/iso-kit/pulls) and open a new PR from your branch against the `main` branch. Please include a clear description of your changes.
 
 ---
 

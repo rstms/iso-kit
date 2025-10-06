@@ -1,6 +1,6 @@
 package option
 
-import "github.com/bgrewell/iso-kit/pkg/logging"
+import "github.com/rstms/iso-kit/pkg/logging"
 
 // ISOType represents the type of ISO image
 type ISOType int

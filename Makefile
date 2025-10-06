@@ -1,6 +1,6 @@
 # Project Information
 PROJECT_NAME = iso-kit
-VERSION_PKG  = github.com/bgrewell/iso-kit/pkg/version
+VERSION_PKG  = github.com/rstms/iso-kit/pkg/version
 
 # Executables
 BINARIES = isoview isoextract isocreate
@@ -36,7 +36,7 @@ $(BINARIES):
 # Run unit tests
 test:
 	@echo "Running unit tests..."
-	go test ./... -v -race -coverprofile=coverage.out
+	go test ./... -v -coverprofile=coverage.out
 
 # Run integration tests
 integration-test:

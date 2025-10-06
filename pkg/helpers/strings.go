@@ -1,6 +1,6 @@
 package helpers
 
-import "github.com/bgrewell/iso-kit/pkg/consts"
+import "github.com/rstms/iso-kit/pkg/consts"
 
 func PadString(s string, length int) []byte {
 	b := make([]byte, length)

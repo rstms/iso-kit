@@ -1,6 +1,6 @@
 # iso-kit
 
-[![codecov](https://codecov.io/gh/bgrewell/iso-kit/graph/badge.svg?token=D15C46IECF)](https://codecov.io/gh/bgrewell/iso-kit)
+[![codecov](https://codecov.io/gh/rstms/iso-kit/graph/badge.svg?token=D15C46IECF)](https://codecov.io/gh/bgrewell/iso-kit)
 
 > **Notice:** This project is in an early development phase and may not yet be fully stable or feature complete. As it evolves, you may encounter significant changes to the API, behavior, and overall functionality.
 
@@ -14,7 +14,7 @@ files that can be installed via the command line using the commands below.
 **isoextract** is a command line tool for extracting files from an ISO image. It can be installed using the following command:
 
 ```bash
-go install github.com/bgrewell/iso-kit/cmd/isoextract@latest
+go install github.com/rstms/iso-kit/cmd/isoextract@latest
 ```
 
 *note: you may need to ensure that `$GOBIN` is in your `$PATH` you can do that by adding `export PATH=$PATH:$(go env GOPATH)/bin`
@@ -77,7 +77,7 @@ Stay tuned for updates as we continue to expand functionality and refine the lib
 
 ## Test Coverage
 
-<img src="https://codecov.io/gh/bgrewell/iso-kit/graphs/sunburst.svg?token=D15C46IECF"/>
+<img src="https://codecov.io/gh/rstms/iso-kit/graphs/sunburst.svg?token=D15C46IECF"/>
 
 ## Development Notes
 

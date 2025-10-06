@@ -1,7 +1,7 @@
 package option
 
 import (
-	"github.com/bgrewell/iso-kit/pkg/logging"
+	"github.com/rstms/iso-kit/pkg/logging"
 )
 
 type ExtractionProgressCallback func(

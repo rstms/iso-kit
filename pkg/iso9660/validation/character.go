@@ -2,7 +2,7 @@ package validation
 
 import (
 	"fmt"
-	"github.com/bgrewell/iso-kit/pkg/consts"
+	"github.com/rstms/iso-kit/pkg/consts"
 	"strings"
 )
 
